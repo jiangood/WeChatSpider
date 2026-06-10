@@ -33,7 +33,7 @@ from qfluentwidgets import (
 )
 from PyQt6.QtGui import QMouseEvent
 
-from .pages import LoginPage, UnifiedScrapePage, SettingsPage, ArticleImagePage
+from .pages import LoginPage, UnifiedScrapePage, SettingsPage
 from .app import apply_label_transparent_background
 
 
@@ -90,7 +90,6 @@ class MainWindow(FluentWindow):
     页面列表:
         - login_page: 登录页面，管理微信登录状态
         - scrape_page: 爬取页面，配置和执行公众号爬取任务
-        - article_image_page: 图片提取页面，从文章中提取图片
         - settings_page: 设置页面，配置应用参数
     
     Attributes:
@@ -252,7 +251,6 @@ class MainWindow(FluentWindow):
         self.scrape_page = UnifiedScrapePage(
             self.login_page.get_login_manager(), self
         )
-        self.article_image_page = ArticleImagePage(self)
         self.settings_page = SettingsPage(self)
         
         # 延迟应用标签透明背景，确保所有组件都已创建
@@ -266,7 +264,6 @@ class MainWindow(FluentWindow):
         pages = [
             self.login_page,
             self.scrape_page,
-            self.article_image_page,
             self.settings_page
         ]
         for page in pages:
@@ -275,8 +272,7 @@ class MainWindow(FluentWindow):
     def _connect_signals(self):
         """连接页面间的信号
         
-        建立页面之间的通信机制，实现爬取完成跳转、数据放弃返回、
-        图片提取请求和设置同步等功能。
+        建立页面之间的通信机制，实现设置同步等功能。
         """
         # 设置变更信号 - 同步到爬取页面
         self.settings_page.settings_changed.connect(self._on_settings_changed)
@@ -297,9 +293,6 @@ class MainWindow(FluentWindow):
         
         self.addSubInterface(
             self.scrape_page, FluentIcon.DOWNLOAD, "公众号爬取"
-        )
-        self.addSubInterface(
-            self.article_image_page, FluentIcon.PHOTO, "图片提取"
         )
         
         self.addSubInterface(

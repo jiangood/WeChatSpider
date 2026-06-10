@@ -22,6 +22,22 @@ def find_chinese_font() -> str:
     raise FileNotFoundError('未找到中文字体（msyh.ttc/simsun.ttc），请安装微软雅黑或宋体')
 
 
+_INLINE_BOLD = re.compile(r'\*\*(.+?)\*\*')
+
+
+def _render_text_line(pdf, text, font_size=11, line_h=6):
+    parts = _INLINE_BOLD.split(text)
+    if len(parts) == 1:
+        pdf.multi_cell(0, line_h, text)
+        return
+    for i, part in enumerate(parts):
+        if not part:
+            continue
+        pdf.set_font('zh', 'B' if i % 2 else '', font_size)
+        pdf.write(line_h, part)
+    pdf.ln()
+
+
 def _sanitize_filename(name: str) -> str:
     safe = re.sub(r'[\\/:*?"<>|]', '', name).strip()[:100]
     return safe or 'untitled'
@@ -37,19 +53,47 @@ def _extract_image_urls(markdown_content: str) -> List[str]:
     return result
 
 
+def _get_image_extension(url: str) -> str:
+    if 'wx_fmt=' in url:
+        match = re.search(r'wx_fmt=(\w+)', url)
+        if match:
+            fmt = match.group(1).lower()
+            if fmt in ['png', 'jpg', 'jpeg', 'gif', 'webp']:
+                return f'.{fmt}'
+    ext = os.path.splitext(url.split('?')[0])[1].lower()
+    if ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+        return ext
+    return '.jpg'
+
+
 def _url_to_cache_path(url: str, cache_dir: str) -> str:
-    ext = os.path.splitext(url.split('?')[0])[1] or '.jpg'
-    if len(ext) > 5:
-        ext = '.jpg'
+    ext = _get_image_extension(url)
     hash_name = hashlib.md5(url.encode()).hexdigest()
     return os.path.join(cache_dir, f'{hash_name}{ext}')
+
+
+_DOWNLOAD_HEADERS = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+}
+
+
+def _merge_headers(headers: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+    if headers is None:
+        return dict(_DOWNLOAD_HEADERS)
+    merged = dict(headers)
+    merged.setdefault('Accept', _DOWNLOAD_HEADERS['Accept'])
+    merged.setdefault('Accept-Language', _DOWNLOAD_HEADERS['Accept-Language'])
+    return merged
 
 
 async def download_images_for_pdf(
     markdown_content: str,
     img_cache_dir: str,
     session: Optional[aiohttp.ClientSession] = None,
+    headers: Optional[Dict[str, str]] = None,
 ) -> str:
+    download_headers = _merge_headers(headers)
     urls = _extract_image_urls(markdown_content)
     if not urls:
         return markdown_content
@@ -60,12 +104,13 @@ async def download_images_for_pdf(
         cache_path = _url_to_cache_path(url, img_cache_dir)
         if os.path.exists(cache_path):
             return url, cache_path
+        http_session = session
         try:
             close_session = False
-            if session is None:
-                session = aiohttp.ClientSession()
+            if http_session is None:
+                http_session = aiohttp.ClientSession(headers=download_headers)
                 close_session = True
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            async with http_session.get(url, headers=download_headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 if resp.status == 200:
                     data = await resp.read()
                     with open(cache_path, 'wb') as f:
@@ -74,8 +119,8 @@ async def download_images_for_pdf(
         except Exception as e:
             logger.warning(f'下载图片失败: {url[:60]} - {e}')
         finally:
-            if close_session and session:
-                await session.close()
+            if close_session and http_session:
+                await http_session.close()
         return url, None
 
     tasks = [_download_one(url) for url in urls]
@@ -141,13 +186,15 @@ def markdown_to_pdf(markdown_content: str, output_path: str, font_path: str, tit
                 w = pdf.w - 20
                 pdf.image(img_path, x=10, w=min(w, 170))
                 pdf.ln(4)
+            else:
+                logger.warning(f'PDF渲染跳过不存在的图片: {img_path}')
             i += 1
             continue
 
         stripped = line.strip()
         if stripped.startswith('# ') and len(stripped) > 2:
             pdf.set_font('zh', 'B', 18)
-            pdf.multi_cell(0, 10, stripped[2:])
+            pdf.multi_cell(0, 10, stripped[2:], align='C')
             pdf.ln(2)
             pdf.set_font('zh', '', 11)
         elif stripped.startswith('## ') and len(stripped) > 3:
@@ -168,7 +215,7 @@ def markdown_to_pdf(markdown_content: str, output_path: str, font_path: str, tit
         elif not stripped.strip():
             pdf.ln(4)
         else:
-            pdf.multi_cell(0, 6, stripped)
+            _render_text_line(pdf, stripped)
 
         i += 1
 
@@ -182,18 +229,20 @@ async def generate_article_pdfs(
     font_path: str,
     img_cache_dir: Optional[str] = None,
     progress_callback=None,
+    headers: Optional[Dict[str, str]] = None,
 ) -> List[str]:
     if img_cache_dir is None:
         img_cache_dir = os.path.join(base_output_dir, '.imgcache')
 
     generated = []
-    session = aiohttp.ClientSession()
+    session = aiohttp.ClientSession(headers=_merge_headers(headers))
     try:
         for idx, article in enumerate(articles):
             name = article.get('name', '未知公众号')
             pub_time = article.get('publish_time', '')
             title = article.get('title', '无标题')
             content = article.get('content', '')
+            link = article['link']
 
             date_prefix = pub_time[:10].replace('-', '') if len(pub_time) >= 10 else 'unknown'
             pdf_dir = os.path.join(base_output_dir, _sanitize_filename(name))
@@ -207,8 +256,9 @@ async def generate_article_pdfs(
                 continue
 
             try:
-                content_with_local = await download_images_for_pdf(content, img_cache_dir, session)
-                markdown_to_pdf(content_with_local, pdf_path, font_path, title)
+                content_with_local = await download_images_for_pdf(content, img_cache_dir, session, headers)
+                pdf_content = f"# {title}\n\n公众号：{name} ｜ {pub_time}\n\n{content_with_local}"
+                markdown_to_pdf(pdf_content, pdf_path, font_path, title)
                 generated.append(pdf_path)
                 logger.info(f'PDF生成成功: {pdf_path}')
                 if progress_callback:
@@ -224,7 +274,7 @@ async def generate_article_pdfs(
 
 
 def generate_article_pdfs_sync(
-    articles, base_output_dir, font_path=None, img_cache_dir=None
+    articles, base_output_dir, font_path=None, img_cache_dir=None, headers=None
 ):
     if font_path is None:
         font_path = find_chinese_font()
@@ -232,7 +282,7 @@ def generate_article_pdfs_sync(
     asyncio.set_event_loop(loop)
     try:
         return loop.run_until_complete(
-            generate_article_pdfs(articles, base_output_dir, font_path, img_cache_dir)
+            generate_article_pdfs(articles, base_output_dir, font_path, img_cache_dir, headers=headers)
         )
     finally:
         loop.close()

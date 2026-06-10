@@ -13,7 +13,6 @@
     - pages/: 各功能页面的实现
         - login_page.py: 微信登录页面
         - unified_scrape_page.py: 公众号爬取页面
-        - article_image_page.py: 图片提取页面
         - settings_page.py: 设置页面
     - widgets.py: 自定义控件（进度条、卡片、历史标签等）
     - workers.py: 后台工作线程（同步/异步爬取）

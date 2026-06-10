@@ -102,7 +102,6 @@ hiddenimports = [
     'gui.utils',
     'gui.history_manager',
     'gui.pages',
-    'gui.pages.article_image_page',
     'gui.pages.content_search_page',
     'gui.pages.login_page',
     'gui.pages.results_page',

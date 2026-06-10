@@ -470,7 +470,7 @@ class BatchWeChatScraper:
                     font_path = find_chinese_font()
                     output_dir = os.path.dirname(output_file) if output_file else config.get('output_dir', '')
                     if output_dir:
-                        generate_article_pdfs_sync(all_articles, output_dir, font_path)
+                        generate_article_pdfs_sync(all_articles, output_dir, font_path, headers=config.get('headers'))
                 except FileNotFoundError as e:
                     logger.warning(f"PDF生成跳过（字体未找到）: {e}")
                 except Exception as e:
@@ -1017,6 +1017,7 @@ class AsyncBatchWeChatScraper:
                         all_articles,
                         base_output_dir=output_dir,
                         font_path=font_path,
+                        headers=config.get('headers'),
                     )
             except FileNotFoundError as e:
                 logger.warning(f"PDF生成跳过（字体未找到）: {e}")

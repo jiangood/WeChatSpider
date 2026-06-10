@@ -10,7 +10,6 @@ GUI 页面模块
     - LoginPage: 登录页面，提供微信扫码登录和凭证管理功能
     - UnifiedScrapePage: 公众号爬取页面，配置和执行批量爬取任务
     - SettingsPage: 设置页面，配置应用参数和爬取选项
-    - ArticleImagePage: 图片提取页面，从文章中提取图片资源
 
 页面设计原则:
     1. 所有页面继承自 QWidget 或 ScrollArea
@@ -22,11 +21,9 @@ GUI 页面模块
 from .login_page import LoginPage
 from .unified_scrape_page import UnifiedScrapePage
 from .settings_page import SettingsPage
-from .article_image_page import ArticleImagePage
 
 __all__ = [
     'LoginPage',
     'UnifiedScrapePage',
     'SettingsPage',
-    'ArticleImagePage'
 ]
