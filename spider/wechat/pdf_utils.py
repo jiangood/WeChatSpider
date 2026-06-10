@@ -195,9 +195,9 @@ async def generate_article_pdfs(
             title = article.get('title', '无标题')
             content = article.get('content', '')
 
-            year_month = pub_time[:7] if len(pub_time) >= 7 else 'unknown'
-            pdf_dir = os.path.join(base_output_dir, _sanitize_filename(name), year_month)
-            pdf_name = f'{_sanitize_filename(title)}.pdf'
+            date_prefix = pub_time[:10].replace('-', '') if len(pub_time) >= 10 else 'unknown'
+            pdf_dir = os.path.join(base_output_dir, _sanitize_filename(name))
+            pdf_name = f'{date_prefix}_{_sanitize_filename(title)}.pdf'
             pdf_path = os.path.join(pdf_dir, pdf_name)
 
             if not content:
