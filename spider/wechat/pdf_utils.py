@@ -2,7 +2,6 @@ import os
 import re
 import hashlib
 import asyncio
-from datetime import datetime
 from typing import List, Dict, Optional
 
 import aiohttp
@@ -24,7 +23,8 @@ def find_chinese_font() -> str:
 
 
 def _sanitize_filename(name: str) -> str:
-    return re.sub(r'[\\/:*?"<>|]', '_', name).strip()[:80] or 'untitled'
+    safe = re.sub(r'[\\/:*?"<>|]', '', name).strip()[:100]
+    return safe or 'untitled'
 
 
 def _extract_image_urls(markdown_content: str) -> List[str]:
@@ -39,7 +39,7 @@ def _extract_image_urls(markdown_content: str) -> List[str]:
 
 def _url_to_cache_path(url: str, cache_dir: str) -> str:
     ext = os.path.splitext(url.split('?')[0])[1] or '.jpg'
-    if not ext or len(ext) > 5:
+    if len(ext) > 5:
         ext = '.jpg'
     hash_name = hashlib.md5(url.encode()).hexdigest()
     return os.path.join(cache_dir, f'{hash_name}{ext}')
@@ -101,6 +101,7 @@ class ArticlePDF(FPDF):
     def __init__(self, font_path: str):
         super().__init__()
         self.font_path = font_path
+        self.title_str = ''
         self.add_font('zh', '', font_path, uni=True)
         self.add_font('zh', 'B', font_path, uni=True)
         self.set_auto_page_break(auto=True, margin=20)
