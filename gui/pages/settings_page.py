@@ -45,7 +45,7 @@ from ..utils import DEFAULT_OUTPUT_DIR
 # 默认配置参数
 # 这些值会在用户首次使用或恢复默认时生效
 DEFAULT_CONFIG = {
-    'max_pages': 10,           # 每个公众号最多爬取的页数
+    'max_pages': 100,           # 每个公众号最多爬取的页数
     'request_interval': 10,    # 请求间隔（秒）
     'account_interval_min': 15,  # 公众号切换最小间隔（秒）
     'account_interval_max': 30,  # 公众号切换最大间隔（秒）
@@ -195,7 +195,7 @@ class SettingsPage(ScrollArea):
         
         # 最大页数
         item1 = SettingItem("默认最大页数", "每个公众号最多爬取的页数")
-        self.pages_spin = CustomSpinBox(1, 100, self.config.get('max_pages', 10))
+        self.pages_spin = CustomSpinBox(1, 500, self.config.get('max_pages', 100))
         self.pages_spin.setMinimumWidth(120)
         item1.addControl(self.pages_spin)
         scrape_layout.addWidget(item1)

@@ -7,12 +7,11 @@
 本模块实现了应用程序的主窗口，基于 qfluentwidgets 的 FluentWindow 构建。
 采用侧边导航栏加内容区域的经典布局，支持多页面切换。
 
-主要功能:
-    - 自适应屏幕分辨率的窗口大小设置
-    - 侧边导航栏管理（支持折叠和展开）
-    - 多页面路由和切换
-    - 未保存数据的退出确认
-    - 页面间信号通信
+    主要功能:
+        - 自适应屏幕分辨率的窗口大小设置
+        - 侧边导航栏管理（支持折叠和展开）
+        - 多页面路由和切换
+        - 页面间信号通信
 
 屏幕适配策略:
     - 小屏幕 (宽度小于1600px): 最小 1100x700，默认 85% 屏幕宽度
@@ -24,17 +23,17 @@
     - MainWindow: 主窗口类，管理所有页面和导航
 """
 
-from PyQt6.QtWidgets import QApplication, QHBoxLayout, QWidget, QFileDialog
-from PyQt6.QtCore import Qt, QSize, QTimer
-from PyQt6.QtGui import QIcon, QCloseEvent, QScreen
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QCloseEvent
 
 from qfluentwidgets import (
     FluentWindow, NavigationItemPosition, FluentIcon,
-    setTheme, Theme, SplashScreen, MessageBox
+    MessageBox
 )
 from PyQt6.QtGui import QMouseEvent
 
-from .pages import WelcomePage, LoginPage, UnifiedScrapePage, ResultsPage, SettingsPage, ArticleImagePage, ContentSearchPage
+from .pages import LoginPage, UnifiedScrapePage, SettingsPage, ArticleImagePage
 from .app import apply_label_transparent_background
 
 
@@ -89,12 +88,9 @@ class MainWindow(FluentWindow):
     包含侧边导航栏和多个功能页面，支持页面间的信号通信和数据传递。
     
     页面列表:
-        - welcome_page: 欢迎页面，显示应用介绍和快速入口
         - login_page: 登录页面，管理微信登录状态
         - scrape_page: 爬取页面，配置和执行公众号爬取任务
         - article_image_page: 图片提取页面，从文章中提取图片
-        - results_page: 结果页面，查看和导出爬取结果
-        - content_search_page: 内容搜索页面，搜索文章内容
         - settings_page: 设置页面，配置应用参数
     
     Attributes:
@@ -252,14 +248,11 @@ class MainWindow(FluentWindow):
         爬取页面需要传入登录管理器以获取登录凭证。
         创建完成后会延迟应用标签透明背景。
         """
-        self.welcome_page = WelcomePage(self)
         self.login_page = LoginPage(self)
-        self.results_page = ResultsPage(self)
         self.scrape_page = UnifiedScrapePage(
             self.login_page.get_login_manager(), self
         )
         self.article_image_page = ArticleImagePage(self)
-        self.content_search_page = ContentSearchPage(self)
         self.settings_page = SettingsPage(self)
         
         # 延迟应用标签透明背景，确保所有组件都已创建
@@ -271,12 +264,9 @@ class MainWindow(FluentWindow):
         遍历所有页面，处理 qfluentwidgets 标签组件的背景透明问题。
         """
         pages = [
-            self.welcome_page,
             self.login_page,
-            self.results_page,
             self.scrape_page,
             self.article_image_page,
-            self.content_search_page,
             self.settings_page
         ]
         for page in pages:
@@ -288,12 +278,6 @@ class MainWindow(FluentWindow):
         建立页面之间的通信机制，实现爬取完成跳转、数据放弃返回、
         图片提取请求和设置同步等功能。
         """
-        # 爬取完成信号
-        self.scrape_page.scrape_completed.connect(self._on_scrape_completed)
-        # 数据放弃信号
-        self.results_page.data_discarded.connect(self._on_data_discarded)
-        # 图片提取请求信号
-        self.results_page.extract_images_requested.connect(self._on_extract_images_requested)
         # 设置变更信号 - 同步到爬取页面
         self.settings_page.settings_changed.connect(self._on_settings_changed)
     
@@ -301,30 +285,12 @@ class MainWindow(FluentWindow):
         """处理设置变更事件，将新配置同步到爬取页面"""
         self.scrape_page.apply_settings(config)
     
-    def _on_scrape_completed(self, articles: list, source_info: str, temp_file_path: str):
-        """处理爬取完成事件，加载结果数据并切换到结果页面"""
-        self.results_page.load_articles_data(articles, source_info, temp_file_path)
-        self.switchTo(self.results_page)
-    
-    def _on_data_discarded(self):
-        """处理数据放弃事件，返回到爬取页面"""
-        self.switchTo(self.scrape_page)
-    
-    def _on_extract_images_requested(self, url: str):
-        """处理图片提取请求，跳转到图片提取页面并填充链接"""
-        self.article_image_page.set_article_url(url)
-        self.switchTo(self.article_image_page)
-    
     def _init_navigation(self):
         """初始化侧边导航项
         
         将所有页面添加到导航栏，设置图标和显示名称。
         设置页面放置在底部位置。
         """
-        self.addSubInterface(
-            self.welcome_page, FluentIcon.HOME, "欢迎"
-        )
-        
         self.addSubInterface(
             self.login_page, FluentIcon.FINGERPRINT, "账号登录"
         )
@@ -335,12 +301,6 @@ class MainWindow(FluentWindow):
         self.addSubInterface(
             self.article_image_page, FluentIcon.PHOTO, "图片提取"
         )
-        self.addSubInterface(
-            self.results_page, FluentIcon.PIE_SINGLE, "结果查看"
-        )
-        self.addSubInterface(
-            self.content_search_page, FluentIcon.SEARCH, "内容搜索"
-        )
         
         self.addSubInterface(
             self.settings_page, FluentIcon.SETTING, "设置",
@@ -348,108 +308,5 @@ class MainWindow(FluentWindow):
         )
     
     def closeEvent(self, event: QCloseEvent):
-        """处理窗口关闭事件
-        
-        检查是否有未保存的爬取结果，如果有则显示确认对话框，
-        让用户选择保存、放弃或取消关闭操作。
-        
-        Args:
-            event: 关闭事件对象，可通过 accept/ignore 控制是否关闭
-        """
-        if self.results_page.has_unsaved_data():
-            # 有未保存的数据，显示确认对话框（支持点击外部关闭）
-            msg_box = ClickOutsideMessageBox(
-                "未保存的数据",
-                f"您有 {len(self.results_page.articles)} 条爬取结果尚未保存。\n\n请选择操作：",
-                self
-            )
-            
-            # 设置按钮文字和宽度
-            msg_box.yesButton.setText("保存")
-            msg_box.yesButton.setFixedWidth(110)
-            msg_box.cancelButton.setText("放弃")
-            msg_box.cancelButton.setFixedWidth(110)
-            
-            # 设置按钮布局间距
-            msg_box.buttonLayout.setSpacing(16)
-            
-            # 使用变量跟踪用户选择
-            user_choice = {'action': None}  # 'save', 'discard', 'stay'
-            
-            def on_save():
-                user_choice['action'] = 'save'
-            
-            def on_discard():
-                user_choice['action'] = 'discard'
-            
-            msg_box.yesButton.clicked.connect(on_save)
-            msg_box.cancelButton.clicked.connect(on_discard)
-            
-            # 点击模态框外部关闭时，action 保持为 None，表示返回（不退出）
-            msg_box.exec()
-            
-            if user_choice['action'] == 'save':
-                # 用户选择保存
-                self._save_and_exit(event)
-            elif user_choice['action'] == 'discard':
-                # 用户选择放弃并退出 - 删除临时文件
-                self.results_page._delete_temp_file()
-                self.results_page._clear_unsaved_data()
-                event.accept()
-            else:
-                # 用户选择返回（不退出）或关闭对话框
-                event.ignore()
-        else:
-            # 没有未保存数据，直接退出
-            event.accept()
-    
-    def _save_and_exit(self, event: QCloseEvent):
-        """保存数据并退出
-        
-        弹出文件保存对话框，让用户选择保存位置。
-        保存成功后关闭窗口，保存失败或取消则不退出。
-        
-        Args:
-            event: 关闭事件对象
-        """
-        import os
-        from datetime import datetime
-        import csv
-        
-        # 生成默认文件名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_name = f"results/爬取结果_{timestamp}.csv"
-        
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "保存结果", default_name, "CSV文件 (*.csv)"
-        )
-        
-        if file_path:
-            try:
-                # 确保目录存在
-                os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
-                
-                articles = self.results_page.articles
-                with open(file_path, 'w', encoding='utf-8-sig', newline='') as f:
-                    if articles:
-                        writer = csv.DictWriter(f, fieldnames=articles[0].keys())
-                        writer.writeheader()
-                        writer.writerows(articles)
-                
-                # 保存成功，退出
-                self.results_page.is_unsaved = False
-                event.accept()
-            except Exception as e:
-                # 保存失败，显示错误并取消退出
-                from qfluentwidgets import InfoBar, InfoBarPosition
-                InfoBar.error(
-                    title="保存失败",
-                    content=str(e),
-                    parent=self,
-                    position=InfoBarPosition.TOP,
-                    duration=3000
-                )
-                event.ignore()
-        else:
-            # 用户取消保存，不退出
-            event.ignore()
+        """处理窗口关闭事件"""
+        event.accept()

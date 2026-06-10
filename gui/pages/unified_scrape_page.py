@@ -61,7 +61,7 @@ CONFIG_FILE = 'config.json'
 # 默认爬取配置参数
 # 这些值会在用户首次使用时生效，之后会从配置文件加载
 DEFAULT_CONFIG = {
-    'max_pages': 10,           # 每个公众号最多爬取的页数
+    'max_pages': 100,           # 每个公众号最多爬取的页数
     'request_interval': 10,    # 请求间隔（秒），避免触发反爬
     'max_workers': 5,          # 最大并发数
     'include_content': False,  # 是否获取文章正文内容
@@ -301,7 +301,7 @@ class UnifiedScrapePage(QWidget):
         
         # 第一行：最大页数 | 请求间隔
         grid.addWidget(BodyLabel("最大页数"), 0, 0)
-        self.pages_spin = CustomSpinBox(1, 100, self.config.get('max_pages', 10))
+        self.pages_spin = CustomSpinBox(1, 500, self.config.get('max_pages', 100))
         self.pages_spin.setFixedWidth(120)  # 增加宽度避免重叠
         grid.addWidget(self.pages_spin, 0, 1)
         
