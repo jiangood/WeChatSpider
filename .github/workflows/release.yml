@@ -26,22 +26,33 @@ jobs:
           pip install pyinstaller --quiet
 
       - name: Download UPX
+        shell: pwsh
         run: |
           $upxUrl = "https://github.com/upx/upx/releases/download/v5.0.2/upx-5.0.2-win64.zip"
           $upxZip = "$env:RUNNER_TEMP\upx.zip"
           $upxDir = "$env:RUNNER_TEMP\upx"
-          curl -L -o $upxZip $upxUrl
+          Invoke-WebRequest -Uri $upxUrl -OutFile $upxZip
           Expand-Archive -Path $upxZip -DestinationPath $upxDir -Force
-          echo "UPX_DIR=$upxDir\upx-5.0.2-win64\upx.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $upxExe = "$upxDir\upx-5.0.2-win64\upx.exe"
+          echo "UPX_EXE=$upxExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build
         shell: cmd
-        run: script\build_ci.bat "${{ github.ref_name }}" "%UPX_DIR%"
+        run: |
+          echo === Build environment ===
+          echo Version: "%GITHUB_REF_NAME%"
+          echo UPX: "%UPX_EXE%"
+          echo Working dir: %CD%
+          echo Python: 
+          where python
+          python --version
+          echo === Running build_ci.bat ===
+          call script\build_ci.bat "%GITHUB_REF_NAME%"
+          echo === Build completed ===
 
       - name: Create ZIP
         run: |
-          $version = "${{ github.ref_name }}"
-          $zipName = "WeChatSpider_${version}_Portable.zip"
+          $zipName = "WeChatSpider_$env:GITHUB_REF_NAME-Portable.zip"
           Compress-Archive -Path "dist\WeChatSpider\*" -DestinationPath $zipName -CompressionLevel Optimal
           echo "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 

@@ -9,9 +9,7 @@ echo.
 
 :: ===== Parameters =====
 :: %1 = tag version (e.g. v1.0.1)
-:: %2 = UPX path (optional)
 set "TAG_VERSION=%~1"
-set "UPX_PATH=%~2"
 
 :: Strip "v" prefix from version
 set "VERSION=%TAG_VERSION:v=%"
@@ -19,16 +17,21 @@ set "VERSION=%TAG_VERSION:v=%"
 :: Validate version
 if "%VERSION%"=="" (
     echo ERROR: Version parameter is required
-    echo Usage: build_ci.bat ^<version^> [upx_path]
-    echo Example: build_ci.bat v1.0.1 C:\upx\upx.exe
     exit /b 1
 )
+
+:: Get UPX path from environment (set by GitHub Actions in previous step)
+set "UPX_PATH=%UPX_EXE%"
 
 cd /d "%~dp0.."
 set "PROJECT_DIR=%CD%"
 echo Project Directory: %PROJECT_DIR%
 echo Version: %VERSION%
-if not "%UPX_PATH%"=="" echo UPX: %UPX_PATH%
+if not "%UPX_PATH%"=="" (
+    echo UPX: %UPX_PATH%
+) else (
+    echo UPX: not found in environment, skipping
+)
 echo.
 
 :: Check Python
