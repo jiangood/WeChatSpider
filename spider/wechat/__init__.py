@@ -36,7 +36,7 @@
     login.login()  # 会打开浏览器等待扫码
     
     scraper = WeChatScraper(login.get_token(), login.get_headers())
-    articles = scraper.get_account_articles('人民日报', max_pages=5)
+    articles = scraper.get_account_articles('人民日报')
     
     # 批量爬取
     from spider.wechat import BatchWeChatScraper

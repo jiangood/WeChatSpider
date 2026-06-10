@@ -126,14 +126,13 @@ class WeChatSpiderRunner:
         
         return results
     
-    def scrape_single_account(self, name, pages=10, days=30, include_content=False,
+    def scrape_single_account(self, name, days=30, include_content=False,
                               interval=10, output_file=None):
         """
         爬取单个公众号的文章
         
         Args:
             name: 公众号名称
-            pages: 最大爬取页数（每页 5 篇）
             days: 时间范围（最近 N 天）
             include_content: 是否获取文章正文
             interval: 请求间隔（秒）
@@ -174,11 +173,13 @@ class WeChatSpiderRunner:
         scraper.set_callback('progress', progress_callback)
         
         # 获取文章列表
-        logger.info(f"获取文章列表，最大 {pages} 页...")
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days)
+        logger.info(f"获取文章列表，日期范围: {start_date} 至 {end_date}")
         articles = scraper.get_account_articles(
             account['wpub_name'],
             account['wpub_fakid'],
-            pages
+            start_date=start_date
         )
         
         logger.info(f"获取到 {len(articles)} 篇文章")
@@ -222,7 +223,7 @@ class WeChatSpiderRunner:
             logger.error("保存失败")
             return False
 
-    def batch_scrape(self, accounts_file, pages=10, days=30, include_content=False,
+    def batch_scrape(self, accounts_file, days=30, include_content=False,
                     interval=10, threads=3, output_dir=None):
         """
         批量爬取多个公众号
@@ -231,7 +232,6 @@ class WeChatSpiderRunner:
         
         Args:
             accounts_file: 公众号列表文件路径
-            pages: 每个号的最大页数
             days: 时间范围（最近 N 天）
             include_content: 是否获取正文
             interval: 请求间隔（秒）
@@ -311,7 +311,6 @@ class WeChatSpiderRunner:
             'end_date': end_date.strftime('%Y-%m-%d'),
             'token': token,
             'headers': headers,
-            'max_pages_per_account': pages,
             'request_interval': interval,
             'use_threading': threads > 1,
             'max_workers': threads,
@@ -322,7 +321,6 @@ class WeChatSpiderRunner:
         # 开始爬取
         logger.info("\n开始批量爬取...")
         logger.info(f"时间范围: {start_date} 至 {end_date}")
-        logger.info(f"每个公众号最多爬取 {pages} 页")
         logger.info(f"请求间隔: {interval} 秒")
         
         start_time = time.time()
@@ -364,13 +362,12 @@ def search(name, output_file=None):
     return runner.search_account(name, output_file)
 
 
-def scrape_account(name, pages=10, days=30, include_content=False, interval=10, output_file=None):
+def scrape_account(name, days=30, include_content=False, interval=10, output_file=None):
     """
     爬取单个公众号便捷函数
     
     Args:
         name: 公众号名称
-        pages: 最大页数
         days: 时间范围
         include_content: 是否获取正文
         interval: 请求间隔
@@ -380,17 +377,16 @@ def scrape_account(name, pages=10, days=30, include_content=False, interval=10, 
         bool: 成功返回 True
     """
     runner = WeChatSpiderRunner()
-    return runner.scrape_single_account(name, pages=pages, days=days, include_content=include_content,
+    return runner.scrape_single_account(name, days=days, include_content=include_content,
                                         interval=interval, output_file=output_file)
 
 
-def batch_scrape(accounts_file, pages=10, days=30, include_content=False, interval=10, threads=3, output_dir=None):
+def batch_scrape(accounts_file, days=30, include_content=False, interval=10, threads=3, output_dir=None):
     """
     批量爬取便捷函数
     
     Args:
         accounts_file: 公众号列表文件
-        pages: 每号最大页数
         days: 时间范围
         include_content: 是否获取正文
         interval: 请求间隔
@@ -401,5 +397,5 @@ def batch_scrape(accounts_file, pages=10, days=30, include_content=False, interv
         bool: 成功返回 True
     """
     runner = WeChatSpiderRunner()
-    return runner.batch_scrape(accounts_file, pages=pages, days=days, include_content=include_content,
-                               interval=interval, threads=threads, output_dir=output_dir)
+    return runner.batch_scrape(accounts_file, days=days, include_content=include_content,
+                                interval=interval, threads=threads, output_dir=output_dir)

@@ -88,12 +88,10 @@ build_installer.bat
 
 ```json
 {
-  "max_pages": 1,              // 最大抓取页数
   "request_interval": 10,      // 请求间隔（秒）
   "max_workers": 5,            // 最大并发数
   "include_content": true,     // 是否包含正文
   "cache_expire_hours": 96     // 缓存过期时间（小时）
-}
 ```
 
 ## 📁 项目结构

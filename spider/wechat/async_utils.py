@@ -26,7 +26,7 @@
 使用示例:
     async with AsyncWeChatClient(token, headers) as client:
         results = await client.search_account('人民日报')
-        articles = await client.get_articles_list(fakeid, max_pages=10)
+        articles = await client.get_articles_list(fakeid)
 """
 
 import aiohttp
@@ -310,41 +310,46 @@ class AsyncWeChatClient:
                 logger.error(f"获取文章列表失败 (start={start}): {e}")
                 return []
     
-    async def get_articles_list(self, fakeid: str, max_pages: int = 10,
+    async def get_articles_list(self, fakeid: str, start_date=None,
                                 progress_callback=None) -> List[Dict[str, Any]]:
         """
-        异步获取多页文章列表（并发）
+        异步获取多页文章列表，根据日期自动停止
         
         Args:
             fakeid: 公众号的fakeid
-            max_pages: 最大页数
+            start_date: 开始日期，早于此日期的文章将停止爬取
             progress_callback: 进度回调函数 (current, total)
             
         Returns:
             list: 所有文章信息列表
         """
-        # 创建所有页面的任务
-        tasks = []
-        for page in range(max_pages):
-            start = page * 5
-            tasks.append(self.get_articles_page(fakeid, start))
-        
-        # 并发执行所有任务
         all_articles = []
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        page = 0
         
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"获取第{i+1}页失败: {result}")
-                continue
+        while True:
+            start = page * 5
+            result = await self.get_articles_page(fakeid, start)
             
             if not result:  # 空页面，可能已到末尾
                 break
-                
+            
+            # 如果所有文章都早于 start_date，停止爬取
+            if start_date:
+                all_before = True
+                for article in result:
+                    ts = article.get('update_time', 0)
+                    if ts and datetime.fromtimestamp(int(ts)).date() >= start_date:
+                        all_before = False
+                        break
+                if all_before:
+                    break
+            
             all_articles.extend(result)
             
             if progress_callback:
-                progress_callback(i + 1, max_pages)
+                progress_callback(page + 1, page + 1)
+            
+            page += 1
         
         return all_articles
     
@@ -827,7 +832,7 @@ class AsyncWeChatClient:
 
 
 async def async_scrape_account(token: str, headers: Dict[str, str],
-                               account_name: str, max_pages: int = 10,
+                               account_name: str, start_date=None,
                                include_content: bool = False,
                                max_concurrent: int = 5,
                                progress_callback=None,
@@ -839,7 +844,7 @@ async def async_scrape_account(token: str, headers: Dict[str, str],
         token: 访问token
         headers: 请求头
         account_name: 公众号名称
-        max_pages: 最大页数
+        start_date: 开始日期，早于此日期的文章将停止爬取
         include_content: 是否获取文章内容
         max_concurrent: 最大并发数
         progress_callback: 文章列表进度回调
@@ -858,7 +863,7 @@ async def async_scrape_account(token: str, headers: Dict[str, str],
         fakeid = search_results[0]['wpub_fakid']
         
         # 获取文章列表
-        articles = await client.get_articles_list(fakeid, max_pages, progress_callback)
+        articles = await client.get_articles_list(fakeid, start_date, progress_callback)
         
         # 添加公众号名称和格式化时间
         for article in articles:
@@ -875,7 +880,7 @@ async def async_scrape_account(token: str, headers: Dict[str, str],
 
 
 async def async_scrape_accounts_batch(token: str, headers: Dict[str, str],
-                                      accounts: List[str], max_pages: int = 10,
+                                      accounts: List[str], start_date=None,
                                       include_content: bool = False,
                                       max_concurrent_accounts: int = 3,
                                       max_concurrent_requests: int = 5,
@@ -888,7 +893,7 @@ async def async_scrape_accounts_batch(token: str, headers: Dict[str, str],
         token: 访问token
         headers: 请求头
         accounts: 公众号名称列表
-        max_pages: 每个公众号的最大页数
+        start_date: 开始日期，早于此日期的文章将停止爬取
         include_content: 是否获取文章内容
         max_concurrent_accounts: 最大并发公众号数
         max_concurrent_requests: 每个公众号的最大并发请求数
@@ -909,7 +914,7 @@ async def async_scrape_accounts_batch(token: str, headers: Dict[str, str],
             
             try:
                 articles = await async_scrape_account(
-                    token, headers, account_name, max_pages,
+                    token, headers, account_name, start_date,
                     include_content, max_concurrent_requests
                 )
                 
@@ -938,7 +943,7 @@ async def async_scrape_accounts_batch(token: str, headers: Dict[str, str],
 
 
 def run_async_scrape(token: str, headers: Dict[str, str],
-                     accounts: List[str], max_pages: int = 10,
+                     accounts: List[str], start_date=None,
                      include_content: bool = False,
                      max_concurrent_accounts: int = 3,
                      max_concurrent_requests: int = 5,
@@ -953,7 +958,7 @@ def run_async_scrape(token: str, headers: Dict[str, str],
         token: 访问token
         headers: 请求头
         accounts: 公众号名称列表
-        max_pages: 每个公众号的最大页数
+        start_date: 开始日期，早于此日期的文章将停止爬取
         include_content: 是否获取文章内容
         max_concurrent_accounts: 最大并发公众号数
         max_concurrent_requests: 每个公众号的最大并发请求数
@@ -970,7 +975,7 @@ def run_async_scrape(token: str, headers: Dict[str, str],
     try:
         result = loop.run_until_complete(
             async_scrape_accounts_batch(
-                token, headers, accounts, max_pages,
+                token, headers, accounts, start_date,
                 include_content, max_concurrent_accounts,
                 max_concurrent_requests, account_callback,
                 progress_callback

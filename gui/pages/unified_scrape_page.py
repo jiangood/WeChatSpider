@@ -32,7 +32,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QDate, pyqtSignal
 from PyQt6.QtGui import QColor
-from datetime import datetime
 import os
 import json
 
@@ -124,9 +123,6 @@ class UnifiedScrapePage(QWidget):
         self.batch_scraper = None
         self.scrape_worker = None
         
-        # 当前爬取任务的输出文件路径
-        self._current_output_file = None
-        
         # 设置对象名称，用于样式表选择器
         self.setObjectName("unifiedScrapePage")
         
@@ -193,6 +189,11 @@ class UnifiedScrapePage(QWidget):
         # 操作按钮行 - 开始爬取和取消按钮在同一行，右对齐
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
+        
+        self.open_dir_btn = PushButton("打开输出目录", icon=FluentIcon.FOLDER)
+        self.open_dir_btn.setFixedWidth(130)
+        self.open_dir_btn.clicked.connect(self._on_open_output_dir)
+        btn_layout.addWidget(self.open_dir_btn)
         
         # 取消按钮 - 初始隐藏
         self.cancel_btn = PushButton("取消爬取", icon=FluentIcon.CLOSE)
@@ -357,6 +358,12 @@ class UnifiedScrapePage(QWidget):
         if dir_path:
             self.output_input.setText(dir_path)
     
+    def _on_open_output_dir(self):
+        """打开输出目录"""
+        dir_path = self.output_input.text().strip() or DEFAULT_OUTPUT_DIR
+        if os.path.isdir(dir_path):
+            os.startfile(dir_path)
+    
     def _on_start_scrape(self):
         """开始爬取"""
         accounts = self.account_list.get_accounts()
@@ -374,21 +381,7 @@ class UnifiedScrapePage(QWidget):
             return
         
         output_dir = self.output_input.text().strip() or DEFAULT_OUTPUT_DIR
-        os.makedirs(output_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # 根据公众号数量生成文件名
-        if len(accounts) == 1:
-            # 单个公众号：公众号名_时间戳.csv
-            # 清理文件名中的非法字符
-            safe_name = "".join(c for c in accounts[0] if c not in r'\/:*?"<>|')
-            output_file = os.path.join(output_dir, f"{safe_name}_{timestamp}.csv")
-        else:
-            # 多个公众号：批量爬取_N个公众号_时间戳.csv
-            output_file = os.path.join(output_dir, f"批量爬取_{len(accounts)}个公众号_{timestamp}.csv")
-        self._current_output_file = output_file  # 记录当前输出文件路径
-        
-        # 使用异步模式
         start, end = calc_date_range(self.date_combo.currentText())
         config = {
             'accounts': accounts,
@@ -398,7 +391,6 @@ class UnifiedScrapePage(QWidget):
             'request_interval': 10,
             'include_content': True,
             'generate_pdf': self.config.get('generate_pdf', True),
-            'output_file': output_file,
             'output_dir': output_dir,
             'max_concurrent_accounts': 1,
             'max_concurrent_requests': 1
@@ -514,16 +506,12 @@ class UnifiedScrapePage(QWidget):
         if accounts:
             self.account_list.add_to_history(accounts)
         
-        # 发射信号，跳转到结果页面，传递临时文件路径
         if len(accounts) == 1:
             source_info = f"爬取: {accounts[0]}"
         else:
             accounts_str = ', '.join(accounts[:3]) + ('...' if len(accounts) > 3 else '')
             source_info = f"批量爬取: {accounts_str} (共{len(accounts)}个公众号)"
-        
-        # 传递临时文件路径，以便用户放弃时可以删除
-        temp_file = self._current_output_file or output_file
-        self.scrape_completed.emit(articles, source_info, temp_file)
+        self.scrape_completed.emit(articles, source_info, "")
     
     def _on_scrape_failed(self, error_msg):
         self.start_btn.show()
@@ -557,9 +545,7 @@ class UnifiedScrapePage(QWidget):
             else:
                 accounts_str = ', '.join(accounts[:3]) + ('...' if len(accounts) > 3 else '')
                 source_info = f"批量爬取(已取消): {accounts_str}"
-            # 传递临时文件路径
-            temp_file = self._current_output_file or ""
-            self.scrape_completed.emit(articles_before_cancel, source_info, temp_file)
+            self.scrape_completed.emit(articles_before_cancel, source_info, "")
     
     def _load_config(self):
         """从配置文件加载设置"""

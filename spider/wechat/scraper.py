@@ -460,11 +460,8 @@ class BatchWeChatScraper:
             # 单线程顺序爬取
             all_articles = self._process_accounts_sequential(config, accounts, start_date, end_date)
         
-        # 保存结果到CSV
         if not self.is_cancelled:
             output_file = config.get('output_file')
-            if output_file:
-                self.scraper.save_articles_to_csv(all_articles, output_file)
             
             # 生成 PDF
             if config.get('generate_pdf', True) and all_articles:
@@ -876,13 +873,8 @@ class AsyncBatchWeChatScraper:
                 self._async_scrape_all(config, start_date, end_date)
             )
             
-            # 保存结果到CSV
+            # 触发完成回调
             if not self.is_cancelled:
-                output_file = config.get('output_file')
-                if output_file and all_articles:
-                    self._save_articles_to_csv(all_articles, output_file)
-                
-                # 触发完成回调
                 self._trigger_batch_completed(len(all_articles))
             
             return all_articles
