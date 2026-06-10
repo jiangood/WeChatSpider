@@ -16,15 +16,13 @@
 
 模块组成:
     login.py - 登录管理，处理认证和会话维护
-    scraper.py - 爬虫实现，包含同步和异步两种模式
+    scraper.py - 爬虫实现，支持单公众号爬取和批量爬取
     utils.py - 工具函数，HTTP 请求、内容解析等
-    async_utils.py - 异步工具，基于 aiohttp 的高性能实现
     cache_codec.py - 缓存编解码，用于登录凭证的分享和导入
 
 技术栈:
     - Selenium: 浏览器自动化，处理扫码登录
     - Requests: 同步 HTTP 请求
-    - aiohttp: 异步 HTTP 请求，提升并发性能
     - BeautifulSoup + lxml: HTML 解析
     - markdownify: HTML 转 Markdown
 

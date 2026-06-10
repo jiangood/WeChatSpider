@@ -20,7 +20,7 @@
     - 底部：进度条和操作按钮
 
 技术实现：
-    - 使用异步爬虫 AsyncBatchWeChatScraper 进行数据抓取
+    - 使用同步爬虫 BatchWeChatScraper 进行数据抓取
     - 通过 QThread 工作线程避免界面阻塞
     - 支持爬取过程中取消操作
     - 自动保存爬取结果到 CSV 文件
@@ -44,9 +44,9 @@ from qfluentwidgets import TableWidget as FluentTable
 
 from ..styles import COLORS
 from ..widgets import CardWidget as CustomCard, ProgressWidget, AccountListWidget
-from ..workers import AsyncBatchScrapeWorker
+from ..workers import BatchScrapeWorker
 from ..utils import DEFAULT_OUTPUT_DIR, play_sound
-from spider.wechat.scraper import AsyncBatchWeChatScraper
+from spider.wechat.scraper import BatchWeChatScraper
 
 # ============================================================
 # 配置常量定义
@@ -98,7 +98,7 @@ class UnifiedScrapePage(QWidget):
     
     Attributes:
         login_manager: 登录管理器，用于获取登录凭证
-        batch_scraper: 异步批量爬虫实例
+        batch_scraper: 批量爬虫实例
         scrape_worker: 爬取工作线程
         config: 当前配置字典
     """
@@ -428,8 +428,8 @@ class UnifiedScrapePage(QWidget):
         self._article_count = 0
         
         # 启动爬取 - 使用异步爬虫
-        self.batch_scraper = AsyncBatchWeChatScraper()
-        self.scrape_worker = AsyncBatchScrapeWorker(self.batch_scraper, config)
+        self.batch_scraper = BatchWeChatScraper()
+        self.scrape_worker = BatchScrapeWorker(self.batch_scraper, config)
         self.scrape_worker.progress_update.connect(self._on_progress_update)
         self.scrape_worker.account_status.connect(self._on_account_status)
         self.scrape_worker.scrape_success.connect(self._on_scrape_success)

@@ -113,7 +113,6 @@ hiddenimports = [
     'spider.log',
     'spider.log.utils',
     'spider.wechat',
-    'spider.wechat.async_utils',
     'spider.wechat.cache_codec',
     'spider.wechat.login',
     'spider.wechat.run',

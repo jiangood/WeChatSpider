@@ -111,7 +111,7 @@ WeMediaSpider/
 │   ├── wechat/             # 微信爬虫
 │   │   ├── login.py        # 登录逻辑
 │   │   ├── scraper.py      # 爬取逻辑
-│   │   ├── async_utils.py  # 异步工具
+
 │   │   └── ...
 │   └── log/                # 日志模块
 ├── script/                  # 构建脚本
@@ -126,7 +126,7 @@ WeMediaSpider/
 
 - **GUI 框架**: PyQt6 + PyQt-Fluent-Widgets
 - **浏览器自动化**: Selenium
-- **异步处理**: asyncio + aiohttp
+- **网络请求**: requests + BeautifulSoup
 - **HTML 解析**: BeautifulSoup4 + lxml
 - **内容转换**: markdownify
 - **日志**: loguru

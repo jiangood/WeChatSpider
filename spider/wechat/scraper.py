@@ -7,7 +7,6 @@
 实现文章爬取的核心逻辑，提供三种爬取器：
 - WeChatScraper: 基础爬虫，适合单公众号爬取
 - BatchWeChatScraper: 批量爬虫，支持多线程
-- AsyncBatchWeChatScraper: 异步批量爬虫，最高性能
 
 设计原则:
     - 模块独立：不依赖 GUI，可作为库单独使用
@@ -19,7 +18,6 @@
     - 单公众号爬取：使用 WeChatScraper
     - 多公众号顺序爬取：使用 BatchWeChatScraper（单线程）
     - 多公众号并发爬取：使用 BatchWeChatScraper（多线程）
-    - 高性能批量爬取：使用 AsyncBatchWeChatScraper
 
 回调事件:
     - progress: 页面爬取进度
@@ -36,14 +34,13 @@ import csv
 import random
 import time
 import threading
-import asyncio
 from datetime import datetime, date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional, Callable
 
 from spider.log.utils import logger
 from spider.wechat.utils import get_fakid, get_articles_list, get_article_content, format_time
-from spider.wechat.pdf_utils import generate_article_pdfs, find_chinese_font
+from spider.wechat.pdf_utils import find_chinese_font
 
 
 class WeChatScraper:
@@ -463,19 +460,6 @@ class BatchWeChatScraper:
         if not self.is_cancelled:
             output_file = config.get('output_file')
             
-            # 生成 PDF
-            if config.get('generate_pdf', True) and all_articles:
-                try:
-                    from spider.wechat.pdf_utils import generate_article_pdfs_sync, find_chinese_font
-                    font_path = find_chinese_font()
-                    output_dir = os.path.dirname(output_file) if output_file else config.get('output_dir', '')
-                    if output_dir:
-                        generate_article_pdfs_sync(all_articles, output_dir, font_path, headers=config.get('headers'))
-                except FileNotFoundError as e:
-                    logger.warning(f"PDF生成跳过（字体未找到）: {e}")
-                except Exception as e:
-                    logger.error(f"PDF生成失败: {e}")
-
             # 触发完成回调
             self._trigger_batch_completed(len(all_articles))
         
@@ -607,7 +591,7 @@ class BatchWeChatScraper:
         fakeid = search_results[0]['wpub_fakid']
         
         # 设置请求间隔
-        self.scraper.request_delay = (1, config.get('request_interval', 60) / 10)
+        self.scraper.request_delay = (1, config.get('request_interval', 60))
         
         # 获取文章列表
         self._trigger_account_status(account_name, "fetching", "正在获取文章列表...")
@@ -642,10 +626,24 @@ class BatchWeChatScraper:
                 try:
                     # 获取内容
                     article = self.scraper.get_article_content_by_url(article)
-                    
+
+                    # 立即生成 PDF（利用 PDF 处理时间作为自然间隔）
+                    if config.get('generate_pdf', True):
+                        try:
+                            from spider.wechat.pdf_utils import generate_single_article_pdf, find_chinese_font
+                            font_path = find_chinese_font()
+                            output_dir = config.get('output_dir', '')
+                            if output_dir:
+                                generate_single_article_pdf(article, output_dir, font_path, headers=config.get('headers'))
+                        except FileNotFoundError as e:
+                            logger.warning(f"PDF生成跳过（字体未找到）: {e}")
+                            config['generate_pdf'] = False  # 后续不再尝试
+                        except Exception as e:
+                            logger.error(f"PDF生成失败: {e}")
+
                     # 请求间延迟
                     if i < len(articles_in_range) - 1:
-                        delay = random.uniform(1, config.get('request_interval', 60) / 10)
+                        delay = random.uniform(1, config.get('request_interval', 60))
                         time.sleep(delay)
                         
                 except Exception as e:
@@ -711,7 +709,7 @@ class BatchWeChatScraper:
             page += 1
             
             # 请求间延迟
-            delay = random.uniform(1, config.get('request_interval', 60) / 10)
+            delay = random.uniform(1, config.get('request_interval', 60))
             time.sleep(delay)
         
         self._trigger_article_progress(
@@ -756,346 +754,3 @@ class BatchWeChatScraper:
             logger.error(f"错误 - {account_name}: {error_message}")
 
 
-class AsyncBatchWeChatScraper:
-    """
-    异步批量爬取管理器
-    
-    基于 asyncio 和 aiohttp 实现的高性能爬虫，通过异步 I/O
-    实现真正的并发请求，效率远高于多线程版本。
-    
-    特性:
-        - 异步 HTTP 请求，高并发低资源占用
-        - 可配置的并发公众号数和请求数
-        - 自动回退到同步模式（aiohttp 不可用时）
-        - 支持中途取消并返回已爬取数据
-    
-    适用场景:
-        - 大量公众号的批量爬取
-        - 对爬取速度有较高要求
-        - 服务器资源有限的环境
-    
-    Attributes:
-        is_cancelled: 取消标志
-        default_config: 默认配置
-        callbacks: 回调函数字典
-        total_articles_count: 已爬取文章总数
-        collected_articles: 已收集的文章列表
-    """
-    
-    def __init__(self):
-        """初始化异步批量爬取管理器"""
-        self.is_cancelled = False
-        
-        # 默认配置
-        self.default_config = {
-            'request_interval': 10,
-            'max_concurrent_accounts': 3,  # 最大并发公众号数
-            'max_concurrent_requests': 5,  # 每个公众号的最大并发请求数
-            'include_content': False,
-        }
-        
-        # 回调函数
-        self.callbacks = {
-            'progress_updated': None,
-            'account_status': None,
-            'batch_completed': None,
-            'error_occurred': None,
-            'article_progress': None,
-            'content_progress': None
-        }
-        
-        # 文章计数
-        self.total_articles_count = 0
-        
-        # 已爬取的文章列表（用于取消时返回部分结果）
-        self.collected_articles = []
-    
-    def set_callback(self, event_type: str, callback_func: Callable):
-        """设置回调函数"""
-        if event_type in self.callbacks:
-            self.callbacks[event_type] = callback_func
-    
-    def cancel_batch_scrape(self):
-        """取消批量爬取"""
-        self.is_cancelled = True
-    
-    def start_batch_scrape(self, config: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        开始异步批量爬取
-        
-        Args:
-            config: 爬取配置
-                
-        Returns:
-            list: 爬取的文章列表
-        """
-        # 合并默认配置
-        for key, value in self.default_config.items():
-            if key not in config:
-                config[key] = value
-        
-        # 重置状态
-        self.is_cancelled = False
-        self.total_articles_count = 0
-        self.collected_articles = []  # 重置已收集的文章
-        
-        # 解析日期
-        try:
-            start_date = datetime.strptime(config['start_date'], '%Y-%m-%d').date()
-            end_date = datetime.strptime(config['end_date'], '%Y-%m-%d').date()
-        except:
-            self._trigger_error("系统", "日期格式错误，应为YYYY-MM-DD")
-            return []
-        
-        if start_date > end_date:
-            self._trigger_error("系统", "开始日期不能晚于结束日期")
-            return []
-        
-        # 导入异步模块
-        try:
-            from spider.wechat.async_utils import AsyncWeChatClient, format_time as async_format_time
-        except ImportError as e:
-            logger.error(f"无法导入异步模块: {e}")
-            logger.info("回退到同步模式...")
-            # 回退到同步爬取
-            sync_scraper = BatchWeChatScraper()
-            for event_type, callback in self.callbacks.items():
-                if callback:
-                    sync_scraper.set_callback(event_type, callback)
-            return sync_scraper.start_batch_scrape(config)
-        
-        # 创建新的事件循环并运行异步爬取
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            all_articles = loop.run_until_complete(
-                self._async_scrape_all(config, start_date, end_date)
-            )
-            
-            # 触发完成回调
-            if not self.is_cancelled:
-                self._trigger_batch_completed(len(all_articles))
-            
-            return all_articles
-            
-        finally:
-            loop.close()
-    
-    async def _async_scrape_all(self, config: Dict[str, Any],
-                                start_date: date, end_date: date) -> List[Dict[str, Any]]:
-        """
-        异步爬取所有公众号
-        
-        Args:
-            config: 爬取配置
-            start_date: 开始日期
-            end_date: 结束日期
-            
-        Returns:
-            list: 所有文章列表
-        """
-        from spider.wechat.async_utils import AsyncWeChatClient, format_time as async_format_time
-        
-        accounts = config['accounts']
-        token = config['token']
-        headers = config['headers']
-        include_content = config.get('include_content', False)
-        max_concurrent_accounts = config.get('max_concurrent_accounts', 3)
-        max_concurrent_requests = config.get('max_concurrent_requests', 5)
-        
-        # 控制并发的信号量
-        account_semaphore = asyncio.Semaphore(max_concurrent_accounts)
-        all_articles = []
-        lock = asyncio.Lock()
-        
-        # 引用self以便在内部函数中访问
-        scraper_self = self
-        
-        async def scrape_single_account(account_name: str) -> List[Dict[str, Any]]:
-            """爬取单个公众号"""
-            async with account_semaphore:
-                if self.is_cancelled:
-                    return []
-                
-                self._trigger_account_status(account_name, "processing", "正在处理...")
-                
-                try:
-                    async with AsyncWeChatClient(
-                        token, headers,
-                        max_concurrent=max_concurrent_requests,
-                        request_delay=(0.5, config.get('request_interval', 10) / 10)
-                    ) as client:
-                        # 搜索公众号
-                        self._trigger_account_status(account_name, "searching", "正在搜索公众号...")
-                        search_results = await client.search_account(account_name)
-                        
-                        if not search_results:
-                            raise Exception(f"未找到公众号: {account_name}")
-                        
-                        fakeid = search_results[0]['wpub_fakid']
-                        
-                        # 获取文章列表
-                        self._trigger_account_status(account_name, "fetching", "正在获取文章列表...")
-                        
-                        def page_progress(current, total):
-                            self._trigger_article_progress(
-                                self.total_articles_count,
-                                f"{account_name}: 正在获取第 {current}/{total} 页"
-                            )
-                        
-                        articles = await client.get_articles_list(fakeid, start_date, page_progress)
-                        
-                        # 添加公众号名称和格式化时间
-                        for article in articles:
-                            article['name'] = account_name
-                            article['publish_timestamp'] = article.get('update_time', 0)
-                            article['publish_time'] = async_format_time(article.get('update_time', 0))
-                            article['content'] = ''
-                        
-                        # 按日期过滤
-                        self._trigger_account_status(account_name, "filtering", "正在按日期过滤...")
-                        articles_in_range = self._filter_articles_by_date(articles, start_date, end_date)
-                        
-                        # 更新总计数并保存已爬取的文章
-                        async with lock:
-                            scraper_self.total_articles_count += len(articles_in_range)
-                            scraper_self.collected_articles.extend(articles_in_range)
-                        
-                        self._trigger_article_progress(
-                            self.total_articles_count,
-                            f"{account_name}: 过滤后 {len(articles_in_range)} 篇文章"
-                        )
-                        
-                        # 获取文章内容
-                        if include_content and articles_in_range:
-                            self._trigger_account_status(
-                                account_name, "content",
-                                f"正在获取 {len(articles_in_range)} 篇文章的内容..."
-                            )
-                            
-                            def content_progress(current, total, message):
-                                self._trigger_content_progress(current, total, message)
-                            
-                            articles_in_range = await client.get_articles_content_batch(
-                                articles_in_range, content_progress
-                            )
-                        
-                        self._trigger_account_status(
-                            account_name, "completed",
-                            f"完成，获得 {len(articles_in_range)} 篇文章"
-                        )
-                        
-                        return articles_in_range
-                        
-                except Exception as e:
-                    error_msg = f"处理失败: {str(e)}"
-                    self._trigger_account_status(account_name, "error", error_msg)
-                    self._trigger_error(account_name, error_msg)
-                    return []
-        
-        # 并发爬取所有公众号
-        tasks = [scrape_single_account(account) for account in accounts]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # 收集结果
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error(f"爬取异常: {result}")
-                continue
-            if result:
-                all_articles.extend(result)
-
-        # ===== PDF 生成 =====
-        if not self.is_cancelled and config.get('generate_pdf', True) and all_articles:
-            self._trigger_account_status("系统", "processing", "正在生成PDF...")
-            try:
-                output_dir = config.get('output_dir') or (os.path.dirname(config.get('output_file', '')) if config.get('output_file') else None)
-                if output_dir:
-                    font_path = find_chinese_font()
-                    await generate_article_pdfs(
-                        all_articles,
-                        base_output_dir=output_dir,
-                        font_path=font_path,
-                        headers=config.get('headers'),
-                    )
-            except FileNotFoundError as e:
-                logger.warning(f"PDF生成跳过（字体未找到）: {e}")
-            except Exception as e:
-                logger.error(f"PDF生成失败: {e}")
-
-        return all_articles
-    
-    def _filter_articles_by_date(self, articles: List[Dict],
-                                  start_date: date, end_date: date) -> List[Dict]:
-        """按日期范围过滤文章"""
-        filtered = []
-        for article in articles:
-            timestamp = article.get('publish_timestamp', 0)
-            if timestamp:
-                try:
-                    article_date = datetime.fromtimestamp(int(timestamp)).date()
-                    if start_date <= article_date <= end_date:
-                        filtered.append(article)
-                except:
-                    continue
-        return filtered
-    
-    def _save_articles_to_csv(self, articles: List[Dict], filename: str) -> bool:
-        """保存文章到CSV文件"""
-        if not articles:
-            return False
-        
-        try:
-            os.makedirs(os.path.dirname(os.path.abspath(filename)), exist_ok=True)
-            
-            with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.writer(f)
-                writer.writerow(['公众号', '标题', '发布时间', '链接', '内容'])
-                
-                for article in articles:
-                    writer.writerow([
-                        article.get('name', ''),
-                        article.get('title', ''),
-                        article.get('publish_time', ''),
-                        article.get('link', ''),
-                        article.get('content', '')
-                    ])
-            
-            return True
-        except Exception as e:
-            logger.error(f"保存CSV失败: {e}")
-            return False
-    
-    def _trigger_article_progress(self, article_count: int, message: str):
-        """触发文章进度回调"""
-        if self.callbacks['article_progress']:
-            self.callbacks['article_progress'](article_count, message)
-    
-    def _trigger_content_progress(self, current: int, total: int, message: str):
-        """触发内容获取进度回调"""
-        if self.callbacks['content_progress']:
-            self.callbacks['content_progress'](current, total, message)
-    
-    def _trigger_account_status(self, account_name: str, status: str, message: str):
-        """触发账号状态回调"""
-        if self.callbacks['account_status']:
-            self.callbacks['account_status'](account_name, status, message)
-        else:
-            logger.info(f"{account_name}: {message}")
-    
-    def _trigger_batch_completed(self, total_articles: int):
-        """触发批次完成回调"""
-        if self.callbacks['batch_completed']:
-            self.callbacks['batch_completed'](total_articles)
-    
-    def _trigger_error(self, account_name: str, error_message: str):
-        """触发错误回调"""
-        if self.callbacks['error_occurred']:
-            self.callbacks['error_occurred'](account_name, error_message)
-        else:
-            logger.error(f"错误 - {account_name}: {error_message}")
-    
-    def get_collected_articles(self) -> List[Dict[str, Any]]:
-        """获取已爬取的文章列表（用于取消时返回部分结果）"""
-        return self.collected_articles.copy()

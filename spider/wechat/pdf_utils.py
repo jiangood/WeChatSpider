@@ -1,10 +1,8 @@
 import os
 import re
 import hashlib
-import asyncio
 from typing import List, Dict, Optional
 
-import aiohttp
 from fpdf import FPDF
 from spider.log.utils import logger
 
@@ -87,50 +85,27 @@ def _merge_headers(headers: Optional[Dict[str, str]]) -> Optional[Dict[str, str]
     return merged
 
 
-async def download_images_for_pdf(
-    markdown_content: str,
-    img_cache_dir: str,
-    session: Optional[aiohttp.ClientSession] = None,
-    headers: Optional[Dict[str, str]] = None,
-) -> str:
+def _sync_download_images(markdown_content: str, img_cache_dir: str, headers: Optional[Dict[str, str]] = None) -> str:
+    import requests as req_lib
     download_headers = _merge_headers(headers)
     urls = _extract_image_urls(markdown_content)
     if not urls:
         return markdown_content
-
     os.makedirs(img_cache_dir, exist_ok=True)
-
-    async def _download_one(url: str):
+    url_map = {}
+    for url in urls:
         cache_path = _url_to_cache_path(url, img_cache_dir)
         if os.path.exists(cache_path):
-            return url, cache_path
-        http_session = session
+            url_map[url] = cache_path
+            continue
         try:
-            close_session = False
-            if http_session is None:
-                http_session = aiohttp.ClientSession(headers=download_headers)
-                close_session = True
-            async with http_session.get(url, headers=download_headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                if resp.status == 200:
-                    data = await resp.read()
-                    with open(cache_path, 'wb') as f:
-                        f.write(data)
-                    return url, cache_path
+            resp = req_lib.get(url, headers=download_headers, timeout=30)
+            if resp.status_code == 200:
+                with open(cache_path, 'wb') as f:
+                    f.write(resp.content)
+                url_map[url] = cache_path
         except Exception as e:
             logger.warning(f'下载图片失败: {url[:60]} - {e}')
-        finally:
-            if close_session and http_session:
-                await http_session.close()
-        return url, None
-
-    tasks = [_download_one(url) for url in urls]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    url_map = {}
-    for r in results:
-        if isinstance(r, tuple) and r[1]:
-            url_map[r[0]] = r[1]
-
     def _replace(match):
         alt = match.group(1)
         url = match.group(2).strip()
@@ -138,7 +113,6 @@ async def download_images_for_pdf(
         if local:
             return f'![{alt}]({local})'
         return match.group(0)
-
     return re.sub(r'!\[(.*?)\]\((.*?)\)', _replace, markdown_content)
 
 
@@ -223,66 +197,49 @@ def markdown_to_pdf(markdown_content: str, output_path: str, font_path: str, tit
     pdf.output(output_path)
 
 
-async def generate_article_pdfs(
-    articles: List[Dict],
+def generate_single_article_pdf(
+    article: Dict,
     base_output_dir: str,
     font_path: str,
-    img_cache_dir: Optional[str] = None,
-    progress_callback=None,
     headers: Optional[Dict[str, str]] = None,
-) -> List[str]:
+    img_cache_dir: Optional[str] = None,
+) -> Optional[str]:
+    name = article.get('name', '未知公众号')
+    pub_time = article.get('publish_time', '')
+    title = article.get('title', '无标题')
+    content = article.get('content', '')
+    if not content:
+        logger.warning(f'跳过PDF生成（无内容）: {title}')
+        return None
     if img_cache_dir is None:
         img_cache_dir = os.path.join(base_output_dir, '.imgcache')
-
-    generated = []
-    session = aiohttp.ClientSession(headers=_merge_headers(headers))
+    date_prefix = pub_time[:10].replace('-', '') if len(pub_time) >= 10 else 'unknown'
+    pdf_dir = os.path.join(base_output_dir, _sanitize_filename(name))
+    pdf_name = f'{date_prefix}_{_sanitize_filename(title)}.pdf'
+    pdf_path = os.path.join(pdf_dir, pdf_name)
     try:
-        for idx, article in enumerate(articles):
-            name = article.get('name', '未知公众号')
-            pub_time = article.get('publish_time', '')
-            title = article.get('title', '无标题')
-            content = article.get('content', '')
-            link = article['link']
-
-            date_prefix = pub_time[:10].replace('-', '') if len(pub_time) >= 10 else 'unknown'
-            pdf_dir = os.path.join(base_output_dir, _sanitize_filename(name))
-            pdf_name = f'{date_prefix}_{_sanitize_filename(title)}.pdf'
-            pdf_path = os.path.join(pdf_dir, pdf_name)
-
-            if not content:
-                logger.warning(f'跳过PDF生成（无内容）: {title}')
-                if progress_callback:
-                    progress_callback('pdf_progress', {'current': idx + 1, 'total': len(articles), 'article': title, 'status': 'skipped'})
-                continue
-
-            try:
-                content_with_local = await download_images_for_pdf(content, img_cache_dir, session, headers)
-                pdf_content = f"# {title}\n\n公众号：{name} ｜ {pub_time}\n\n{content_with_local}"
-                markdown_to_pdf(pdf_content, pdf_path, font_path, title)
-                generated.append(pdf_path)
-                logger.info(f'PDF生成成功: {pdf_path}')
-                if progress_callback:
-                    progress_callback('pdf_progress', {'current': idx + 1, 'total': len(articles), 'article': title, 'status': 'ok'})
-            except Exception as e:
-                logger.error(f'PDF生成失败 [{title}]: {e}')
-                if progress_callback:
-                    progress_callback('pdf_progress', {'current': idx + 1, 'total': len(articles), 'article': title, 'status': 'error', 'error': str(e)})
-    finally:
-        await session.close()
-
-    return generated
+        content_with_local = _sync_download_images(content, img_cache_dir, headers)
+        pdf_content = f"# {title}\n\n公众号：{name} ｜ {pub_time}\n\n{content_with_local}"
+        markdown_to_pdf(pdf_content, pdf_path, font_path, title)
+        logger.info(f'PDF生成成功: {pdf_path}')
+        return pdf_path
+    except Exception as e:
+        logger.error(f'PDF生成失败 [{title}]: {e}')
+        return None
 
 
 def generate_article_pdfs_sync(
-    articles, base_output_dir, font_path=None, img_cache_dir=None, headers=None
-):
+    articles: List[Dict],
+    base_output_dir: str,
+    font_path: Optional[str] = None,
+    img_cache_dir: Optional[str] = None,
+    headers: Optional[Dict[str, str]] = None,
+) -> List[str]:
     if font_path is None:
         font_path = find_chinese_font()
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(
-            generate_article_pdfs(articles, base_output_dir, font_path, img_cache_dir, headers=headers)
-        )
-    finally:
-        loop.close()
+    generated = []
+    for article in articles:
+        pdf_path = generate_single_article_pdf(article, base_output_dir, font_path, headers, img_cache_dir)
+        if pdf_path:
+            generated.append(pdf_path)
+    return generated
