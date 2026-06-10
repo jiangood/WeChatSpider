@@ -43,6 +43,7 @@ from typing import List, Dict, Any, Optional, Callable
 
 from spider.log.utils import logger
 from spider.wechat.utils import get_fakid, get_articles_list, get_article_content, format_time
+from spider.wechat.pdf_utils import generate_article_pdfs, find_chinese_font
 
 
 class WeChatScraper:
@@ -120,14 +121,14 @@ class WeChatScraper:
             self._trigger_error(f"搜索公众号失败: {e}")
             return []
     
-    def get_account_articles(self, account_name, fakeid=None, max_pages=10):
+    def get_account_articles(self, account_name, fakeid=None, start_date=None):
         """
         获取公众号文章列表
         
         Args:
             account_name: 公众号名称
             fakeid: 公众号fakeid，如果为None则自动搜索
-            max_pages: 最大页数限制
+            start_date: 开始日期，早于此日期的文章将停止爬取
             
         Returns:
             list: 文章信息列表
@@ -150,9 +151,10 @@ class WeChatScraper:
             
             all_articles = []
             page_start = 0
+            page = 0
             
-            for page in range(max_pages):
-                self._trigger_progress(page, max_pages)
+            while True:
+                self._trigger_progress(page, max(1, page))
                 
                 # 获取一页文章
                 titles, links, update_times = get_articles_list(
@@ -179,14 +181,26 @@ class WeChatScraper:
                     }
                     all_articles.append(article)
                 
+                # 如果所有文章都早于 start_date，停止爬取
+                if start_date:
+                    all_before = True
+                    for _, _, update_time in zip(titles, links, update_times):
+                        ts = int(update_time)
+                        if datetime.fromtimestamp(ts).date() >= start_date:
+                            all_before = False
+                            break
+                    if all_before:
+                        break
+                
                 page_start += 5
+                page += 1
                 
                 # 请求间延迟
                 delay = random.uniform(*self.request_delay)
                 time.sleep(delay)
             
             self._trigger_status(account_name, "fetched", f"获取到 {len(all_articles)} 篇文章")
-            self._trigger_progress(max_pages, max_pages)
+            self._trigger_progress(page, max(1, page))
             
             return all_articles
             
@@ -359,7 +373,6 @@ class BatchWeChatScraper:
         
         # 默认配置
         self.default_config = {
-            'max_pages_per_account': 10,
             'request_interval': 10,
             'account_interval': (15, 30),
             'use_threading': False,
@@ -588,10 +601,9 @@ class BatchWeChatScraper:
         
         # 获取文章列表
         self._trigger_account_status(account_name, "fetching", "正在获取文章列表...")
-        max_pages = config.get('max_pages_per_account', 100)
         
         # 使用自定义方法获取文章，以便实时更新进度
-        all_articles = self._get_articles_with_progress(account_name, fakeid, max_pages, config)
+        all_articles = self._get_articles_with_progress(account_name, fakeid, start_date, config)
         
         # 按日期过滤
         self._trigger_account_status(account_name, "filtering", "正在按日期过滤文章...")
@@ -632,14 +644,15 @@ class BatchWeChatScraper:
         
         return articles_in_range
     
-    def _get_articles_with_progress(self, account_name, fakeid, max_pages, config):
-        """获取文章列表并实时更新进度"""
+    def _get_articles_with_progress(self, account_name, fakeid, start_date, config):
+        """获取文章列表并实时更新进度，根据日期自动停止"""
         from spider.wechat.utils import get_articles_list, format_time
         
         all_articles = []
         page_start = 0
+        page = 0
         
-        for page in range(max_pages):
+        while True:
             if self.is_cancelled:
                 break
             
@@ -673,7 +686,19 @@ class BatchWeChatScraper:
                 }
                 all_articles.append(article)
             
+            # 如果所有文章都早于 start_date，停止爬取
+            if start_date:
+                all_before = True
+                for _, _, update_time in zip(titles, links, update_times):
+                    ts = int(update_time)
+                    if datetime.fromtimestamp(ts).date() >= start_date:
+                        all_before = False
+                        break
+                if all_before:
+                    break
+            
             page_start += 5
+            page += 1
             
             # 请求间延迟
             delay = random.uniform(1, config.get('request_interval', 60) / 10)
@@ -681,7 +706,7 @@ class BatchWeChatScraper:
         
         self._trigger_article_progress(
             self.total_articles_count + len(all_articles),
-            f"{account_name}: 获取到 {len(all_articles)} 篇文章"
+            f"{account_name}: 获取到 {len(all_articles)} 篇"
         )
         
         return all_articles
@@ -753,7 +778,6 @@ class AsyncBatchWeChatScraper:
         
         # 默认配置
         self.default_config = {
-            'max_pages_per_account': 10,
             'request_interval': 10,
             'max_concurrent_accounts': 3,  # 最大并发公众号数
             'max_concurrent_requests': 5,  # 每个公众号的最大并发请求数
@@ -871,7 +895,6 @@ class AsyncBatchWeChatScraper:
         accounts = config['accounts']
         token = config['token']
         headers = config['headers']
-        max_pages = config.get('max_pages_per_account', 10)
         include_content = config.get('include_content', False)
         max_concurrent_accounts = config.get('max_concurrent_accounts', 3)
         max_concurrent_requests = config.get('max_concurrent_requests', 5)
@@ -916,7 +939,7 @@ class AsyncBatchWeChatScraper:
                                 f"{account_name}: 正在获取第 {current}/{total} 页"
                             )
                         
-                        articles = await client.get_articles_list(fakeid, max_pages, page_progress)
+                        articles = await client.get_articles_list(fakeid, start_date, page_progress)
                         
                         # 添加公众号名称和格式化时间
                         for article in articles:
@@ -977,7 +1000,24 @@ class AsyncBatchWeChatScraper:
                 continue
             if result:
                 all_articles.extend(result)
-        
+
+        # ===== PDF 生成 =====
+        if not self.is_cancelled and config.get('generate_pdf', True) and all_articles:
+            self._trigger_account_status("系统", "processing", "正在生成PDF...")
+            try:
+                output_dir = config.get('output_dir') or (os.path.dirname(config.get('output_file', '')) if config.get('output_file') else None)
+                if output_dir:
+                    font_path = find_chinese_font()
+                    await generate_article_pdfs(
+                        all_articles,
+                        base_output_dir=output_dir,
+                        font_path=font_path,
+                    )
+            except FileNotFoundError as e:
+                logger.warning(f"PDF生成跳过（字体未找到）: {e}")
+            except Exception as e:
+                logger.error(f"PDF生成失败: {e}")
+
         return all_articles
     
     def _filter_articles_by_date(self, articles: List[Dict],
