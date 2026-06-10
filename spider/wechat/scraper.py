@@ -466,6 +466,19 @@ class BatchWeChatScraper:
             if output_file:
                 self.scraper.save_articles_to_csv(all_articles, output_file)
             
+            # 生成 PDF
+            if config.get('generate_pdf', True) and all_articles:
+                try:
+                    from spider.wechat.pdf_utils import generate_article_pdfs_sync, find_chinese_font
+                    font_path = find_chinese_font()
+                    output_dir = os.path.dirname(output_file) if output_file else config.get('output_dir', '')
+                    if output_dir:
+                        generate_article_pdfs_sync(all_articles, output_dir, font_path)
+                except FileNotFoundError as e:
+                    logger.warning(f"PDF生成跳过（字体未找到）: {e}")
+                except Exception as e:
+                    logger.error(f"PDF生成失败: {e}")
+
             # 触发完成回调
             self._trigger_batch_completed(len(all_articles))
         
