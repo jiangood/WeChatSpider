@@ -10,7 +10,7 @@
     - 公众号名称输入（支持多行批量输入）
     - 爬取参数配置（页数、间隔、并发数等）
     - 日期范围筛选
-    - 正文内容获取（可选）
+    - 正文内容自动获取
     - 实时爬取进度显示
     - 爬取状态表格展示
 
@@ -39,12 +39,12 @@ import json
 from qfluentwidgets import (
     TitleLabel, BodyLabel, CaptionLabel, CardWidget,
     PrimaryPushButton, PushButton, LineEdit,
-    ComboBox, CheckBox, InfoBar, InfoBarPosition, FluentIcon,
+    ComboBox, InfoBar, InfoBarPosition, FluentIcon,
 )
 from qfluentwidgets import TableWidget as FluentTable
 
 from ..styles import COLORS
-from ..widgets import CardWidget as CustomCard, ProgressWidget, AccountListWidget, CustomSpinBox
+from ..widgets import CardWidget as CustomCard, ProgressWidget, AccountListWidget
 from ..workers import AsyncBatchScrapeWorker
 from ..utils import DEFAULT_OUTPUT_DIR, play_sound
 from spider.wechat.scraper import AsyncBatchWeChatScraper
@@ -62,7 +62,6 @@ DEFAULT_CONFIG = {
     'max_pages': 100,           # 每个公众号最多爬取的页数
     'request_interval': 10,    # 请求间隔（秒），避免触发反爬
     'max_workers': 1,          # 最大并发数
-    'include_content': False,  # 是否获取文章正文内容
     'output_dir': DEFAULT_OUTPUT_DIR,  # 输出目录，使用用户文档目录避免权限问题
     'cache_expire_hours': 96,  # 登录缓存有效期（小时）
 }
@@ -252,10 +251,8 @@ class UnifiedScrapePage(QWidget):
         2. 爬取状态卡片 - 显示各公众号的爬取状态
         
         配置项采用网格布局，紧凑排列：
-        - 第一行：最大页数 | 请求间隔
-        - 第二行：日期范围选择
-        - 第三行：获取正文选项
-        - 第四行：输出目录
+        - 第一行：日期范围选择
+        - 第二行：输出目录
         
         Args:
             parent_layout: 父布局
@@ -281,62 +278,23 @@ class UnifiedScrapePage(QWidget):
         grid.setSpacing(8)
         grid.setContentsMargins(0, 0, 0, 0)
         
-        # 第一行：最大页数 | 请求间隔
-        grid.addWidget(BodyLabel("最大页数"), 0, 0)
-        self.pages_spin = CustomSpinBox(1, 500, self.config.get('max_pages', 100))
-        self.pages_spin.setFixedWidth(120)  # 增加宽度避免重叠
-        grid.addWidget(self.pages_spin, 0, 1)
-        
-        grid.addWidget(BodyLabel("请求间隔"), 0, 2)
-        interval_container = QHBoxLayout()
-        interval_container.setSpacing(4)
-        self.interval_spin = CustomSpinBox(1, 60, self.config.get('request_interval', 10))
-        self.interval_spin.setFixedWidth(120)  # 增加宽度避免重叠
-        interval_container.addWidget(self.interval_spin)
-        interval_unit = BodyLabel("秒")
-        interval_unit.setStyleSheet("color: #888; font-size: 12px;")
-        interval_container.addWidget(interval_unit)
-        interval_container.addStretch()
-        grid.addLayout(interval_container, 0, 3)
-        
-        # 第二行：日期范围
-        grid.addWidget(BodyLabel("日期范围"), 1, 0)
+        # 第一行：日期范围
+        grid.addWidget(BodyLabel("日期范围"), 0, 0)
         self.date_combo = ComboBox()
         self.date_combo.addItems(DATE_RANGE_OPTIONS)
         self.date_combo.setCurrentText("最近7天")
         self.date_combo.setFixedWidth(140)
-        grid.addWidget(self.date_combo, 1, 1)
+        grid.addWidget(self.date_combo, 0, 1)
         self.date_label = BodyLabel("")
         self.date_label.setStyleSheet("color: #888;")
         self._update_date_label("最近7天")
         self.date_combo.currentTextChanged.connect(self._update_date_label)
-        grid.addWidget(self.date_label, 1, 2, 1, 2)
-        
-        self.content_check = CheckBox("获取正文内容（较慢）")
-        self.content_check.setChecked(self.config.get('include_content', False))
-        # 强制设置 CheckBox 透明背景
-        self.content_check.setStyleSheet("""
-            CheckBox, QCheckBox {
-                background-color: transparent;
-                background: transparent;
-                color: #ffffff;
-            }
-            CheckBox::indicator, QCheckBox::indicator {
-                background-color: #3d3d3d;
-                border: 1px solid #555555;
-                border-radius: 3px;
-            }
-            CheckBox::indicator:checked, QCheckBox::indicator:checked {
-                background-color: #07C160;
-                border-color: #07C160;
-            }
-        """)
-        grid.addWidget(self.content_check, 2, 2, 1, 2)
+        grid.addWidget(self.date_label, 0, 2, 1, 2)
         
         config_layout.addLayout(grid)
         
-        # 第四行：输出目录
-        grid.addWidget(BodyLabel("输出目录"), 3, 0)
+        # 第二行：输出目录
+        grid.addWidget(BodyLabel("输出目录"), 1, 0)
         output_container = QHBoxLayout()
         output_container.setSpacing(4)
         self.output_input = LineEdit()
@@ -346,7 +304,7 @@ class UnifiedScrapePage(QWidget):
             config_output_dir = DEFAULT_OUTPUT_DIR
         self.output_input.setText(config_output_dir)
         self.output_input.setPlaceholderText("输出目录")
-        self.output_input.setMaximumWidth(100)
+        self.output_input.setMinimumWidth(320)
         output_container.addWidget(self.output_input)
         browse_btn = PushButton("...", icon=FluentIcon.FOLDER)
         browse_btn.setFixedWidth(50)
@@ -354,7 +312,7 @@ class UnifiedScrapePage(QWidget):
         browse_btn.clicked.connect(self._on_browse_output)
         output_container.addWidget(browse_btn)
         output_container.addStretch()
-        grid.addLayout(output_container, 3, 1)
+        grid.addLayout(output_container, 1, 1)
         
         right_layout.addWidget(config_card)
         
@@ -438,9 +396,9 @@ class UnifiedScrapePage(QWidget):
             'start_date': start.toString("yyyy-MM-dd"),
             'end_date': end.toString("yyyy-MM-dd"),
             'token': token, 'headers': headers,
-            'max_pages_per_account': self.pages_spin.value(),
-            'request_interval': self.interval_spin.value(),
-            'include_content': self.content_check.isChecked(),
+            'max_pages_per_account': 100,
+            'request_interval': 10,
+            'include_content': True,
             'output_file': output_file,
             'max_concurrent_accounts': 1,
             'max_concurrent_requests': 1
@@ -628,14 +586,5 @@ class UnifiedScrapePage(QWidget):
         self.config.update(config)
         
         # 应用到UI控件
-        if 'max_pages' in config:
-            self.pages_spin.setValue(config['max_pages'])
-        
-        if 'request_interval' in config:
-            self.interval_spin.setValue(config['request_interval'])
-        
-        if 'include_content' in config:
-            self.content_check.setChecked(config['include_content'])
-        
         if 'output_dir' in config:
             self.output_input.setText(config['output_dir'])
