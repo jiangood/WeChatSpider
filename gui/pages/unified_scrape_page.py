@@ -59,7 +59,6 @@ CONFIG_FILE = 'config.json'
 # 默认爬取配置参数
 # 这些值会在用户首次使用时生效，之后会从配置文件加载
 DEFAULT_CONFIG = {
-    'max_pages': 100,           # 每个公众号最多爬取的页数
     'request_interval': 10,    # 请求间隔（秒），避免触发反爬
     'max_workers': 1,          # 最大并发数
     'output_dir': DEFAULT_OUTPUT_DIR,  # 输出目录，使用用户文档目录避免权限问题
@@ -396,10 +395,11 @@ class UnifiedScrapePage(QWidget):
             'start_date': start.toString("yyyy-MM-dd"),
             'end_date': end.toString("yyyy-MM-dd"),
             'token': token, 'headers': headers,
-            'max_pages_per_account': 100,
             'request_interval': 10,
             'include_content': True,
+            'generate_pdf': self.config.get('generate_pdf', True),
             'output_file': output_file,
+            'output_dir': output_dir,
             'max_concurrent_accounts': 1,
             'max_concurrent_requests': 1
         }
