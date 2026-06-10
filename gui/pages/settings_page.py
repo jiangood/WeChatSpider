@@ -6,7 +6,7 @@
 提供应用程序的全局设置界面，采用 Fluent Design 风格。
 
 主要功能：
-    - 爬取参数设置（页数、间隔、并发数、正文获取）
+    - 爬取参数设置（页数、间隔、正文获取）
     - 存储设置（输出目录、缓存有效期）
     - 关于信息展示
     - 配置的保存和恢复
@@ -49,7 +49,7 @@ DEFAULT_CONFIG = {
     'request_interval': 10,    # 请求间隔（秒）
     'account_interval_min': 15,  # 公众号切换最小间隔（秒）
     'account_interval_max': 30,  # 公众号切换最大间隔（秒）
-    'max_workers': 3,          # 默认并发数
+    'max_workers': 1,          # 默认并发数
     'include_content': False,  # 是否默认获取正文
     'output_dir': DEFAULT_OUTPUT_DIR,  # 输出目录
     'cache_expire_hours': 96,  # 登录缓存有效期（小时）
@@ -212,15 +212,6 @@ class SettingsPage(ScrollArea):
         
         self._add_separator(scrape_layout)
         
-        # 线程数
-        item3 = SettingItem("默认线程数", "批量爬取时的并发数")
-        self.workers_spin = CustomSpinBox(1, 10, self.config.get('max_workers', 3))
-        self.workers_spin.setMinimumWidth(120)
-        item3.addControl(self.workers_spin)
-        scrape_layout.addWidget(item3)
-        
-        self._add_separator(scrape_layout)
-        
         # 获取正文
         item4 = SettingItem("获取文章正文", "默认爬取文章内容（较慢）")
         self.content_switch = SwitchButton()
@@ -358,7 +349,7 @@ class SettingsPage(ScrollArea):
         self.config = {
             'max_pages': self.pages_spin.value(),
             'request_interval': self.interval_spin.value(),
-            'max_workers': self.workers_spin.value(),
+            'max_workers': 1,
             'include_content': self.content_switch.isChecked(),
             'output_dir': self.output_input.text().strip() or DEFAULT_OUTPUT_DIR,
             'cache_expire_hours': self.cache_spin.value(),
@@ -379,7 +370,6 @@ class SettingsPage(ScrollArea):
         self.config = DEFAULT_CONFIG.copy()
         self.pages_spin.setValue(self.config['max_pages'])
         self.interval_spin.setValue(self.config['request_interval'])
-        self.workers_spin.setValue(self.config['max_workers'])
         self.content_switch.setChecked(self.config['include_content'])
         self.output_input.setText(self.config['output_dir'])
         self.cache_spin.setValue(self.config['cache_expire_hours'])

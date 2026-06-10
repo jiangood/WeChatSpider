@@ -1,5 +1,5 @@
 {
-  "max_pages": 1,
+  "max_pages": 100,
   "request_interval": 10,
   "max_workers": 5,
   "include_content": true,

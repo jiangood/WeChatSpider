@@ -40,8 +40,7 @@ import json
 from qfluentwidgets import (
     TitleLabel, BodyLabel, CaptionLabel, CardWidget,
     PrimaryPushButton, PushButton, LineEdit,
-    DatePicker, CheckBox, InfoBar, InfoBarPosition, FluentIcon,
-    PickerColumnFormatter
+    ComboBox, CheckBox, InfoBar, InfoBarPosition, FluentIcon,
 )
 from qfluentwidgets import TableWidget as FluentTable
 
@@ -63,47 +62,31 @@ CONFIG_FILE = 'config.json'
 DEFAULT_CONFIG = {
     'max_pages': 100,           # 每个公众号最多爬取的页数
     'request_interval': 10,    # 请求间隔（秒），避免触发反爬
-    'max_workers': 5,          # 最大并发数
+    'max_workers': 1,          # 最大并发数
     'include_content': False,  # 是否获取文章正文内容
     'output_dir': DEFAULT_OUTPUT_DIR,  # 输出目录，使用用户文档目录避免权限问题
     'cache_expire_hours': 96,  # 登录缓存有效期（小时）
 }
 
 
-class NumericMonthFormatter(PickerColumnFormatter):
-    """
-    月份数字格式化器
-    
-    qfluentwidgets 的 DatePicker 默认显示英文月份名（January, February...），
-    这个格式化器将其改为显示数字（1, 2, 3...），更符合中文用户习惯。
-    
-    使用方式：
-        date_picker.setColumnFormatter(0, NumericMonthFormatter())
-    """
-    
-    def encode(self, value):
-        """
-        编码：将月份数值转换为显示字符串
-        
-        Args:
-            value: 月份数值（1-12）
-            
-        Returns:
-            str: 月份的字符串表示
-        """
-        return str(value)
-    
-    def decode(self, value: str):
-        """
-        解码：将显示字符串转换回月份数值
-        
-        Args:
-            value: 月份字符串
-            
-        Returns:
-            int: 月份数值
-        """
-        return int(value)
+DATE_RANGE_OPTIONS = [
+    "最近7天", "本月", "最近3月", "本年", "最近3年"
+]
+
+def calc_date_range(option: str):
+    """根据下拉选项计算起止日期"""
+    now = QDate.currentDate()
+    if option == "最近7天":
+        return now.addDays(-7), now
+    elif option == "本月":
+        return QDate(now.year(), now.month(), 1), now
+    elif option == "最近3月":
+        return now.addMonths(-3), now
+    elif option == "本年":
+        return QDate(now.year(), 1, 1), now
+    elif option == "最近3年":
+        return now.addYears(-3), now
+    return now.addDays(-7), now
 
 
 class UnifiedScrapePage(QWidget):
@@ -272,7 +255,7 @@ class UnifiedScrapePage(QWidget):
         配置项采用网格布局，紧凑排列：
         - 第一行：最大页数 | 请求间隔
         - 第二行：日期范围选择
-        - 第三行：并发数 | 获取正文选项
+        - 第三行：获取正文选项
         - 第四行：正文过滤 | 输出目录
         
         Args:
@@ -319,38 +302,16 @@ class UnifiedScrapePage(QWidget):
         
         # 第二行：日期范围
         grid.addWidget(BodyLabel("日期范围"), 1, 0)
-        date_container = QHBoxLayout()
-        date_container.setSpacing(6)
-        self.start_date = DatePicker()
-        self.start_date.setColumnFormatter(0, NumericMonthFormatter())  # 月份使用数字格式
-        self.start_date.setColumnWidth(0, 50)  # 缩小月份列宽度
-        self.start_date.setDate(QDate.currentDate().addDays(-30))
-        date_container.addWidget(self.start_date)
-        date_sep = BodyLabel("→")
-        date_sep.setFixedWidth(16)
-        date_sep.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        date_container.addWidget(date_sep)
-        self.end_date = DatePicker()
-        self.end_date.setColumnFormatter(0, NumericMonthFormatter())  # 月份使用数字格式
-        self.end_date.setColumnWidth(0, 50)  # 缩小月份列宽度
-        self.end_date.setDate(QDate.currentDate())
-        date_container.addWidget(self.end_date)
-        date_container.addStretch()
-        grid.addLayout(date_container, 1, 1, 1, 3)
-        
-        # 第三行：并发数 | 获取正文
-        grid.addWidget(BodyLabel("并发数"), 2, 0)
-        concurrent_container = QHBoxLayout()
-        concurrent_container.setSpacing(4)
-        self.concurrent_spin = CustomSpinBox(1, 10, self.config.get('max_workers', 5))
-        self.concurrent_spin.setFixedWidth(110)
-        self.concurrent_spin.setToolTip("每个公众号的最大并发请求数")
-        concurrent_container.addWidget(self.concurrent_spin)
-        concurrent_unit = BodyLabel("并发")
-        concurrent_unit.setStyleSheet("color: #888; font-size: 12px;")
-        concurrent_container.addWidget(concurrent_unit)
-        concurrent_container.addStretch()
-        grid.addLayout(concurrent_container, 2, 1)
+        self.date_combo = ComboBox()
+        self.date_combo.addItems(DATE_RANGE_OPTIONS)
+        self.date_combo.setCurrentText("最近7天")
+        self.date_combo.setFixedWidth(140)
+        grid.addWidget(self.date_combo, 1, 1)
+        self.date_label = BodyLabel("")
+        self.date_label.setStyleSheet("color: #888;")
+        self._update_date_label("最近7天")
+        self.date_combo.currentTextChanged.connect(self._update_date_label)
+        grid.addWidget(self.date_label, 1, 2, 1, 2)
         
         self.content_check = CheckBox("获取正文内容（较慢）")
         self.content_check.setChecked(self.config.get('include_content', False))
@@ -454,6 +415,10 @@ class UnifiedScrapePage(QWidget):
         if not is_checked:
             self.keyword_filter_input.clear()
     
+    def _update_date_label(self, option: str):
+        start, end = calc_date_range(option)
+        self.date_label.setText(f"{start.toString('MM-dd')} → {end.toString('MM-dd')}")
+    
     def _on_browse_output(self):
         """选择输出目录"""
         dir_path = QFileDialog.getExistingDirectory(self, "选择输出目录")
@@ -495,18 +460,19 @@ class UnifiedScrapePage(QWidget):
         keyword_filter = self.keyword_filter_input.text().strip() if self.content_check.isChecked() else ""
         
         # 使用异步模式
+        start, end = calc_date_range(self.date_combo.currentText())
         config = {
             'accounts': accounts,
-            'start_date': self.start_date.date.toString("yyyy-MM-dd"),
-            'end_date': self.end_date.date.toString("yyyy-MM-dd"),
+            'start_date': start.toString("yyyy-MM-dd"),
+            'end_date': end.toString("yyyy-MM-dd"),
             'token': token, 'headers': headers,
             'max_pages_per_account': self.pages_spin.value(),
             'request_interval': self.interval_spin.value(),
             'include_content': self.content_check.isChecked(),
             'content_keyword_filter': keyword_filter,  # 正文关键词过滤
             'output_file': output_file,
-            'max_concurrent_accounts': min(3, len(accounts)),  # 最多3个公众号并发
-            'max_concurrent_requests': self.concurrent_spin.value()
+            'max_concurrent_accounts': 1,
+            'max_concurrent_requests': 1
         }
         
         # 初始化状态表格
@@ -696,9 +662,6 @@ class UnifiedScrapePage(QWidget):
         
         if 'request_interval' in config:
             self.interval_spin.setValue(config['request_interval'])
-        
-        if 'max_workers' in config:
-            self.concurrent_spin.setValue(config['max_workers'])
         
         if 'include_content' in config:
             self.content_check.setChecked(config['include_content'])
