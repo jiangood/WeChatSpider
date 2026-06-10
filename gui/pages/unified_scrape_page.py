@@ -11,7 +11,6 @@
     - 爬取参数配置（页数、间隔、并发数等）
     - 日期范围筛选
     - 正文内容获取（可选）
-    - 正文关键词过滤
     - 实时爬取进度显示
     - 爬取状态表格展示
 
@@ -256,7 +255,7 @@ class UnifiedScrapePage(QWidget):
         - 第一行：最大页数 | 请求间隔
         - 第二行：日期范围选择
         - 第三行：获取正文选项
-        - 第四行：正文过滤 | 输出目录
+        - 第四行：输出目录
         
         Args:
             parent_layout: 父布局
@@ -315,7 +314,6 @@ class UnifiedScrapePage(QWidget):
         
         self.content_check = CheckBox("获取正文内容（较慢）")
         self.content_check.setChecked(self.config.get('include_content', False))
-        self.content_check.stateChanged.connect(self._on_content_check_changed)
         # 强制设置 CheckBox 透明背景
         self.content_check.setStyleSheet("""
             CheckBox, QCheckBox {
@@ -337,16 +335,8 @@ class UnifiedScrapePage(QWidget):
         
         config_layout.addLayout(grid)
         
-        # 第四行：正文过滤 | 输出目录（对称布局）
-        grid.addWidget(BodyLabel("正文过滤"), 3, 0)
-        self.keyword_filter_input = LineEdit()
-        self.keyword_filter_input.setPlaceholderText("输入关键词过滤正文")
-        self.keyword_filter_input.setEnabled(self.config.get('include_content', False))
-        self.keyword_filter_input.setToolTip("只保留正文中包含该关键词的文章（需勾选获取正文）")
-        self.keyword_filter_input.setMaximumWidth(200)
-        grid.addWidget(self.keyword_filter_input, 3, 1)
-        
-        grid.addWidget(BodyLabel("输出目录"), 3, 2)
+        # 第四行：输出目录
+        grid.addWidget(BodyLabel("输出目录"), 3, 0)
         output_container = QHBoxLayout()
         output_container.setSpacing(4)
         self.output_input = LineEdit()
@@ -364,7 +354,7 @@ class UnifiedScrapePage(QWidget):
         browse_btn.clicked.connect(self._on_browse_output)
         output_container.addWidget(browse_btn)
         output_container.addStretch()
-        grid.addLayout(output_container, 3, 3)
+        grid.addLayout(output_container, 3, 1)
         
         right_layout.addWidget(config_card)
         
@@ -399,21 +389,6 @@ class UnifiedScrapePage(QWidget):
         
         right_layout.addWidget(status_card, 1)
         parent_layout.addWidget(right_container, 1)
-    
-    def _on_content_check_changed(self, state):
-        """
-        获取正文复选框状态变化处理
-        
-        当用户勾选或取消"获取正文内容"选项时，
-        同步更新正文关键词过滤输入框的启用状态。
-        
-        Args:
-            state: 复选框状态值
-        """
-        is_checked = state == Qt.CheckState.Checked.value
-        self.keyword_filter_input.setEnabled(is_checked)
-        if not is_checked:
-            self.keyword_filter_input.clear()
     
     def _update_date_label(self, option: str):
         start, end = calc_date_range(option)
@@ -456,9 +431,6 @@ class UnifiedScrapePage(QWidget):
             output_file = os.path.join(output_dir, f"批量爬取_{len(accounts)}个公众号_{timestamp}.csv")
         self._current_output_file = output_file  # 记录当前输出文件路径
         
-        # 获取正文关键词过滤
-        keyword_filter = self.keyword_filter_input.text().strip() if self.content_check.isChecked() else ""
-        
         # 使用异步模式
         start, end = calc_date_range(self.date_combo.currentText())
         config = {
@@ -469,7 +441,6 @@ class UnifiedScrapePage(QWidget):
             'max_pages_per_account': self.pages_spin.value(),
             'request_interval': self.interval_spin.value(),
             'include_content': self.content_check.isChecked(),
-            'content_keyword_filter': keyword_filter,  # 正文关键词过滤
             'output_file': output_file,
             'max_concurrent_accounts': 1,
             'max_concurrent_requests': 1
@@ -665,10 +636,6 @@ class UnifiedScrapePage(QWidget):
         
         if 'include_content' in config:
             self.content_check.setChecked(config['include_content'])
-            # 同时更新关键词过滤输入框的启用状态
-            self.keyword_filter_input.setEnabled(config['include_content'])
-            if not config['include_content']:
-                self.keyword_filter_input.clear()
         
         if 'output_dir' in config:
             self.output_input.setText(config['output_dir'])

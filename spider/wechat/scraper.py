@@ -343,7 +343,6 @@ class BatchWeChatScraper:
         - 自动处理公众号间的请求间隔
         - 单个公众号失败不影响其他任务
         - 支持中途取消
-        - 支持正文关键词过滤
     
     Attributes:
         scraper: 内部使用的 WeChatScraper 实例
@@ -366,7 +365,6 @@ class BatchWeChatScraper:
             'use_threading': False,
             'max_workers': 3,
             'include_content': False,
-            'content_keyword_filter': ''   # 正文关键词过滤
         }
         
         # 回调函数
@@ -631,25 +629,6 @@ class BatchWeChatScraper:
                 except Exception as e:
                     logger.error(f"获取文章内容失败: {e}")
                     continue
-            
-            # 正文关键词过滤
-            content_keyword_filter = config.get('content_keyword_filter', '')
-            if content_keyword_filter:
-                self._trigger_account_status(
-                    account_name, "filtering",
-                    f"正在按关键词 '{content_keyword_filter}' 过滤正文..."
-                )
-                articles_before_filter = len(articles_in_range)
-                articles_in_range = self._filter_articles_by_keyword(
-                    articles_in_range, content_keyword_filter
-                )
-                articles_after_filter = len(articles_in_range)
-                filtered_out = articles_before_filter - articles_after_filter
-                
-                self._trigger_article_progress(
-                    self.total_articles_count - filtered_out + len(articles_in_range),
-                    f"{account_name}: 关键词过滤后 {articles_after_filter} 篇文章 (过滤掉 {filtered_out} 篇)"
-                )
         
         return articles_in_range
     
@@ -740,30 +719,6 @@ class BatchWeChatScraper:
             self.callbacks['error'](account_name, error_message)
         else:
             logger.error(f"错误 - {account_name}: {error_message}")
-    
-    def _filter_articles_by_keyword(self, articles, keyword):
-        """按正文关键词过滤文章
-        
-        Args:
-            articles: 文章列表
-            keyword: 关键词
-            
-        Returns:
-            list: 过滤后的文章列表（正文包含关键词的文章）
-        """
-        if not keyword:
-            return articles
-        
-        keyword_lower = keyword.lower()
-        filtered = []
-        for article in articles:
-            content = article.get('content', '')
-            # 检查正文是否包含关键词（不区分大小写）
-            if content and keyword_lower in content.lower():
-                filtered.append(article)
-        
-        logger.info(f"正文关键词过滤: {len(articles)} -> {len(filtered)} 篇 (关键词: {keyword})")
-        return filtered
 
 
 class AsyncBatchWeChatScraper:
@@ -803,7 +758,6 @@ class AsyncBatchWeChatScraper:
             'max_concurrent_accounts': 3,  # 最大并发公众号数
             'max_concurrent_requests': 5,  # 每个公众号的最大并发请求数
             'include_content': False,
-            'content_keyword_filter': ''   # 正文关键词过滤
         }
         
         # 回调函数
@@ -919,7 +873,6 @@ class AsyncBatchWeChatScraper:
         headers = config['headers']
         max_pages = config.get('max_pages_per_account', 10)
         include_content = config.get('include_content', False)
-        content_keyword_filter = config.get('content_keyword_filter', '')  # 正文关键词过滤
         max_concurrent_accounts = config.get('max_concurrent_accounts', 3)
         max_concurrent_requests = config.get('max_concurrent_requests', 5)
         
@@ -999,33 +952,6 @@ class AsyncBatchWeChatScraper:
                             articles_in_range = await client.get_articles_content_batch(
                                 articles_in_range, content_progress
                             )
-                            
-                            # 正文关键词过滤
-                            if content_keyword_filter:
-                                self._trigger_account_status(
-                                    account_name, "filtering",
-                                    f"正在按关键词 '{content_keyword_filter}' 过滤正文..."
-                                )
-                                articles_before_filter = len(articles_in_range)
-                                articles_in_range = self._filter_articles_by_keyword(
-                                    articles_in_range, content_keyword_filter
-                                )
-                                articles_after_filter = len(articles_in_range)
-                                
-                                # 更新计数（减去被过滤掉的文章）
-                                filtered_out = articles_before_filter - articles_after_filter
-                                async with lock:
-                                    scraper_self.total_articles_count -= filtered_out
-                                    # 更新已收集的文章列表（移除被过滤的）
-                                    scraper_self.collected_articles = [
-                                        a for a in scraper_self.collected_articles
-                                        if a.get('name') != account_name or a in articles_in_range
-                                    ]
-                                
-                                self._trigger_article_progress(
-                                    self.total_articles_count,
-                                    f"{account_name}: 关键词过滤后 {articles_after_filter} 篇文章 (过滤掉 {filtered_out} 篇)"
-                                )
                         
                         self._trigger_account_status(
                             account_name, "completed",
@@ -1067,30 +993,6 @@ class AsyncBatchWeChatScraper:
                         filtered.append(article)
                 except:
                     continue
-        return filtered
-    
-    def _filter_articles_by_keyword(self, articles: List[Dict], keyword: str) -> List[Dict]:
-        """按正文关键词过滤文章
-        
-        Args:
-            articles: 文章列表
-            keyword: 关键词
-            
-        Returns:
-            list: 过滤后的文章列表（正文包含关键词的文章）
-        """
-        if not keyword:
-            return articles
-        
-        keyword_lower = keyword.lower()
-        filtered = []
-        for article in articles:
-            content = article.get('content', '')
-            # 检查正文是否包含关键词（不区分大小写）
-            if content and keyword_lower in content.lower():
-                filtered.append(article)
-        
-        logger.info(f"正文关键词过滤: {len(articles)} -> {len(filtered)} 篇 (关键词: {keyword})")
         return filtered
     
     def _save_articles_to_csv(self, articles: List[Dict], filename: str) -> bool:
