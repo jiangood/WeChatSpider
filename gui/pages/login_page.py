@@ -45,8 +45,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, QUrl, QTimer, Qt, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QRadialGradient
-from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
 
 from qfluentwidgets import (
     ScrollArea, TitleLabel, BodyLabel, CaptionLabel, SubtitleLabel,
@@ -219,11 +217,18 @@ class CookieCollector:
         self.cookies = {}
 
 
-class CustomWebEnginePage(QWebEnginePage):
-    """自定义WebEnginePage，拦截新窗口请求"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
+class CustomWebEnginePage:
+    """占位类，运行时会被替换为真正的 QWebEnginePage 子类"""
+    def __new__(cls, *args, **kwargs):
+        from PyQt6.QtWebEngineCore import QWebEnginePage
+        
+        class _RealPage(QWebEnginePage):
+            def createWindow(self, window_type):
+                return self
+            def acceptNavigationRequest(self, url, nav_type, is_main_frame):
+                return True
+        
+        return _RealPage(*args, **kwargs)
     
     def createWindow(self, window_type):
         """
@@ -426,17 +431,20 @@ class LoginPage(QWidget):
         super().__init__(parent)
         self.login_manager = WeChatSpiderLogin()
         self.cookie_collector = CookieCollector()
+        self.webview = None
+        self.custom_page = None
+        self.browser_view = None
         self.setObjectName("loginPage")
         
         # 强制设置暗黑背景
         self.setStyleSheet("background-color: #1a1a1a;")
         
         self._setup_ui()
-        self._setup_cookie_listener()
         self._check_login_status()
     
     def _setup_cookie_listener(self):
-        """设置Cookie监听器"""
+        """设置Cookie监听器（延迟导入，避免启动时加载 WebEngine）"""
+        from PyQt6.QtWebEngineCore import QWebEngineProfile
         profile = QWebEngineProfile.defaultProfile()
         cookie_store = profile.cookieStore()
         cookie_store.cookieAdded.connect(self.cookie_collector.on_cookie_added)
@@ -454,9 +462,9 @@ class LoginPage(QWidget):
         self.status_view = self._create_status_view()
         self.stacked_widget.addWidget(self.status_view)
         
-        # 创建浏览器视图（内嵌浏览器）
-        self.browser_view = self._create_browser_view()
-        self.stacked_widget.addWidget(self.browser_view)
+        # 浏览器视图延迟到首次点击"扫码登录"时创建
+        self._browser_placeholder = QWidget()
+        self.stacked_widget.addWidget(self._browser_placeholder)
         
         # 默认显示状态视图
         self.stacked_widget.setCurrentWidget(self.status_view)
@@ -583,7 +591,9 @@ class LoginPage(QWidget):
         return status_widget
     
     def _create_browser_view(self):
-        """创建浏览器视图"""
+        """创建浏览器视图（延迟导入 WebEngine）"""
+        from PyQt6.QtWebEngineWidgets import QWebEngineView
+        
         browser_widget = QWidget()
         # 设置背景色，与应用主题保持一致
         browser_widget.setStyleSheet("background-color: #1a1a1a;")
@@ -631,6 +641,23 @@ class LoginPage(QWidget):
         
         return browser_widget
     
+    def _ensure_browser(self):
+        """延迟创建浏览器视图（仅在首次点击登录时创建）"""
+        if self.browser_view is not None:
+            return
+        # 移除占位符
+        placeholder_idx = self.stacked_widget.indexOf(self._browser_placeholder)
+        self.stacked_widget.removeWidget(self._browser_placeholder)
+        self._browser_placeholder.deleteLater()
+        self._browser_placeholder = None
+        
+        # 创建真正的浏览器视图
+        self.browser_view = self._create_browser_view()
+        self.stacked_widget.insertWidget(placeholder_idx, self.browser_view)
+        
+        # 设置 Cookie 监听
+        self._setup_cookie_listener()
+    
     def _check_login_status(self):
         """检查登录状态"""
         status = self.login_manager.check_login_status()
@@ -662,9 +689,12 @@ class LoginPage(QWidget):
     
     def _start_browser_login(self):
         """开始浏览器登录流程"""
+        self._ensure_browser()
+        
         self.cookie_collector.clear()
         
         # 清除浏览器cookies
+        from PyQt6.QtWebEngineCore import QWebEngineProfile
         profile = QWebEngineProfile.defaultProfile()
         profile.cookieStore().deleteAllCookies()
         
@@ -677,7 +707,8 @@ class LoginPage(QWidget):
     
     def _on_cancel_login(self):
         """取消登录 - 返回状态视图"""
-        self.webview.stop()
+        if self.webview:
+            self.webview.stop()
         self.stacked_widget.setCurrentWidget(self.status_view)
     
     def _on_url_changed(self, url):

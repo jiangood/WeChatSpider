@@ -135,7 +135,6 @@ a = Analysis(
         'pandas',
         'scipy',
 
-        'tkinter',
         'test',
         'tests',
         'setuptools',
@@ -164,6 +163,7 @@ a = Analysis(
         # 排除调试相关
         'pdb',
         'doctest',
+        'tkinter',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
