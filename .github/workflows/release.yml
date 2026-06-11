@@ -37,8 +37,16 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "UPX_EXE=$upxExe"
           Add-Content -Path $env:GITHUB_ENV -Value "CI_VERSION=${{ github.ref_name }}"
 
+      - name: Debug env
+        run: |
+          echo "GITHUB_REF_NAME=$env:GITHUB_REF_NAME"
+          echo "CI_VERSION=$env:CI_VERSION"
+          echo "UPX_EXE=$env:UPX_EXE"
+          echo "--- Python test ---"
+          python -c "import os; print('CI_VERSION:', os.environ.get('CI_VERSION', 'NOT SET'))"
+
       - name: Build
-        run: python script\build_ci.py
+        run: python -u script\build_ci.py
 
       - name: Create ZIP
         run: |
