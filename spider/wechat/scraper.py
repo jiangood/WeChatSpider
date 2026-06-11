@@ -34,6 +34,7 @@ import csv
 import random
 import time
 import threading
+import traceback
 from datetime import datetime, date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional, Callable
@@ -384,7 +385,8 @@ class BatchWeChatScraper:
             'batch_completed': None,
             'error_occurred': None,
             'article_progress': None,  # 文章进度回调 (count, message)
-            'content_progress': None   # 内容获取进度回调 (current, total, message) - 真实百分比
+            'content_progress': None,   # 内容获取进度回调 (current, total, message) - 真实百分比
+            'pdf_progress': None,
         }
         
         # 文章计数
@@ -506,7 +508,9 @@ class BatchWeChatScraper:
                     time.sleep(delay)
                     
             except Exception as e:
+                tb = traceback.format_exc()
                 error_msg = f"处理失败: {str(e)}"
+                logger.error(f"{error_msg}\n{tb}")
                 self._trigger_account_status(account, "error", error_msg)
                 self._trigger_error(account, error_msg)
                 continue
@@ -558,7 +562,9 @@ class BatchWeChatScraper:
                     )
                     
                 except Exception as e:
+                    tb = traceback.format_exc()
                     error_msg = f"处理失败: {str(e)}"
+                    logger.error(f"{error_msg}\n{tb}")
                     self._trigger_account_status(account, "error", error_msg)
                     self._trigger_error(account, error_msg)
                 
@@ -611,6 +617,8 @@ class BatchWeChatScraper:
         # 获取文章内容
         if config.get('include_content', False) and articles_in_range:
             total_content = len(articles_in_range)
+            pdf_success = 0
+            pdf_fail = 0
             self._trigger_account_status(account_name, "content", f"正在获取 {total_content} 篇文章的内容...")
             
             for i, article in enumerate(articles_in_range):
@@ -634,12 +642,17 @@ class BatchWeChatScraper:
                             font_path = find_chinese_font()
                             output_dir = config.get('output_dir', '')
                             if output_dir:
-                                generate_single_article_pdf(article, output_dir, font_path, headers=config.get('headers'))
+                                result = generate_single_article_pdf(article, output_dir, font_path, headers=config.get('headers'))
+                                if result:
+                                    pdf_success += 1
+                                else:
+                                    pdf_fail += 1
                         except FileNotFoundError as e:
                             logger.warning(f"PDF生成跳过（字体未找到）: {e}")
                             config['generate_pdf'] = False  # 后续不再尝试
                         except Exception as e:
                             logger.error(f"PDF生成失败: {e}")
+                            pdf_fail += 1
 
                     # 请求间延迟
                     if i < len(articles_in_range) - 1:
@@ -647,9 +660,12 @@ class BatchWeChatScraper:
                         time.sleep(delay)
                         
                 except Exception as e:
-                    logger.error(f"获取文章内容失败: {e}")
+                    logger.error(f"获取文章内容失败: {e}\n{traceback.format_exc()}")
                     continue
         
+            # 通知 PDF 生成状态
+            self._trigger_pdf_progress(account_name, pdf_success, pdf_fail)
+
         return articles_in_range
     
     def _get_articles_with_progress(self, account_name, fakeid, start_date, config):
@@ -752,5 +768,10 @@ class BatchWeChatScraper:
             self.callbacks['error'](account_name, error_message)
         else:
             logger.error(f"错误 - {account_name}: {error_message}")
+
+    def _trigger_pdf_progress(self, account_name, pdf_success, pdf_fail):
+        """触发PDF生成进度回调"""
+        if self.callbacks.get('pdf_progress'):
+            self.callbacks['pdf_progress'](account_name, pdf_success, pdf_fail)
 
 

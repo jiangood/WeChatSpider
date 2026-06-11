@@ -134,8 +134,7 @@ a = Analysis(
         'numpy',
         'pandas',
         'scipy',
-        'PIL',
-        'Pillow',
+
         'tkinter',
         'test',
         'tests',

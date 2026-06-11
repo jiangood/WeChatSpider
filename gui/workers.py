@@ -60,6 +60,7 @@ class BatchScrapeWorker(QThread):
     scrape_failed = pyqtSignal(str)
     status_update = pyqtSignal(str)
     article_progress = pyqtSignal(int, str)
+    pdf_progress = pyqtSignal(str, int, int)
     
     def __init__(self, batch_scraper, config: dict):
         """初始化工作线程
@@ -126,6 +127,12 @@ class BatchScrapeWorker(QThread):
             self.batch_scraper.set_callback('error_occurred', error_callback)
             self.batch_scraper.set_callback('article_progress', article_progress_callback)
             self.batch_scraper.set_callback('content_progress', content_progress_callback)
+            
+            def pdf_progress_callback(account_name, pdf_success, pdf_fail):
+                if not self.is_cancelled:
+                    self.pdf_progress.emit(account_name, pdf_success, pdf_fail)
+            
+            self.batch_scraper.set_callback('pdf_progress', pdf_progress_callback)
             
             # 开始爬取
             self.status_update.emit("开始爬取...")

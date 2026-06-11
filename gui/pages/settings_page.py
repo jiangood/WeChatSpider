@@ -37,6 +37,7 @@ from qfluentwidgets import (
 from ..styles import COLORS
 from ..widgets import CustomSpinBox
 from ..utils import DEFAULT_OUTPUT_DIR
+from spider.log.utils import get_user_data_dir
 
 # ============================================================
 # 配置常量定义
@@ -256,6 +257,25 @@ class SettingsPage(ScrollArea):
         
         layout.addWidget(storage_card)
         
+        # 诊断卡片
+        diagnostic_card = CardWidget()
+        diagnostic_layout = QVBoxLayout(diagnostic_card)
+        diagnostic_layout.setContentsMargins(20, 16, 20, 16)
+        diagnostic_layout.setSpacing(0)
+        
+        diag_title = BodyLabel("诊断")
+        diag_title.setStyleSheet("font-weight: bold; font-size: 14px; color: #ffffff;")
+        diagnostic_layout.addWidget(diag_title)
+        
+        item_log = SettingItem("日志文件", "查看程序运行日志，用于排查问题")
+        open_log_btn = PushButton("打开文件夹", icon=FluentIcon.DOCUMENT)
+        open_log_btn.setFixedWidth(120)
+        open_log_btn.clicked.connect(self._on_open_log_dir)
+        item_log.addControl(open_log_btn)
+        diagnostic_layout.addWidget(item_log)
+        
+        layout.addWidget(diagnostic_card)
+        
         # 关于卡片
         about_card = CardWidget()
         about_layout = QHBoxLayout(about_card)
@@ -378,6 +398,17 @@ class SettingsPage(ScrollArea):
             title="已恢复", content="设置已恢复为默认值",
             parent=self, position=InfoBarPosition.TOP, duration=2000
         )
+    
+    def _on_open_log_dir(self):
+        log_dir = os.path.join(get_user_data_dir(), 'logs')
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            os.startfile(log_dir)
+        except Exception as e:
+            InfoBar.error(
+                title="打开失败", content=f"无法打开日志目录: {e}",
+                parent=self, position=InfoBarPosition.TOP, duration=3000
+            )
     
     def get_config(self):
         """

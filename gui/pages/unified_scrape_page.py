@@ -426,6 +426,8 @@ class UnifiedScrapePage(QWidget):
         self._total_accounts = len(accounts)
         self._current_account_index = 0
         self._article_count = 0
+        self._pdf_success = 0
+        self._pdf_fail = 0
         
         # 启动爬取 - 使用异步爬虫
         self.batch_scraper = BatchWeChatScraper()
@@ -436,6 +438,7 @@ class UnifiedScrapePage(QWidget):
         self.scrape_worker.scrape_failed.connect(self._on_scrape_failed)
         self.scrape_worker.status_update.connect(self._on_status_update)
         self.scrape_worker.article_progress.connect(self._on_article_progress)
+        self.scrape_worker.pdf_progress.connect(self._on_pdf_progress)
         self.scrape_worker.start()
     
     def _on_progress_update(self, current, total, message):
@@ -454,6 +457,11 @@ class UnifiedScrapePage(QWidget):
         """更新文章进度"""
         self._article_count = article_count
         self.progress_widget.set_article_progress(article_count, message)
+    
+    def _on_pdf_progress(self, account_name, pdf_success, pdf_fail):
+        """累计PDF生成进度"""
+        self._pdf_success += pdf_success
+        self._pdf_fail += pdf_fail
     
     def _on_status_update(self, message):
         self.progress_widget.progress_label.setText(message)
@@ -495,8 +503,12 @@ class UnifiedScrapePage(QWidget):
         self._article_count = len(articles)
         self.progress_widget._article_count = len(articles)  # 确保完成时显示正确数量
         self.progress_widget.set_complete(f"爬取完成！")
-        self.status_hint.setText(f"完成！共 {len(articles)} 篇文章")
-        self.status_hint.setStyleSheet(f"color: {COLORS['success']};")
+        if self._pdf_fail > 0:
+            self.status_hint.setText(f"完成！共 {len(articles)} 篇文章，PDF 成功 {self._pdf_success} 篇，失败 {self._pdf_fail} 篇")
+            self.status_hint.setStyleSheet(f"color: {COLORS['warning']};")
+        else:
+            self.status_hint.setText(f"完成！共 {len(articles)} 篇文章，PDF 全部生成成功")
+            self.status_hint.setStyleSheet(f"color: {COLORS['success']};")
         
         # 播放任务完成音效
         play_sound('complete')

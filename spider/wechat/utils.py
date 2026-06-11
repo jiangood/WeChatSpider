@@ -38,7 +38,6 @@ import os
 import csv
 from datetime import datetime
 
-from tqdm import tqdm
 import bs4
 from markdownify import MarkdownConverter
 
@@ -172,52 +171,48 @@ def get_articles_list(page_num, start_page, fakeid, token, headers):
     
     Note:
         函数内置 1-2 秒的随机延迟，避免请求过快被封禁。
-        使用 tqdm 显示进度条。
     """
     url = 'https://mp.weixin.qq.com/cgi-bin/appmsg'
     title = []
     link = []
     update_time = []
     
-    with tqdm(total=page_num) as pbar:
-        for i in range(page_num):
-            data = {
-                'action': 'list_ex',
-                'begin': start_page + i*5,       #页数
-                'count': '5',
-                'fakeid': fakeid,
-                'type': '9',
-                'query':'',
-                'token': token,
-                'lang': 'zh_CN',
-                'f': 'json',
-                'ajax': '1',
-            }
+    for i in range(page_num):
+        data = {
+            'action': 'list_ex',
+            'begin': start_page + i*5,       #页数
+            'count': '5',
+            'fakeid': fakeid,
+            'type': '9',
+            'query':'',
+            'token': token,
+            'lang': 'zh_CN',
+            'f': 'json',
+            'ajax': '1',
+        }
+        
+        # 随机延时，避免被反爬
+        time.sleep(random.randint(1, 2))
+        
+        r = requests.get(url, headers=headers, params=data)
+        # 解析json
+        dic = r.json()
+        
+        # 调试日志：打印API响应
+        logger.info(f"API响应状态: {r.status_code}")
+        if 'base_resp' in dic:
+            logger.info(f"base_resp: {dic['base_resp']}")
+        logger.info(f"app_msg_cnt: {dic.get('app_msg_cnt', 'N/A')}, 本页文章数: {len(dic.get('app_msg_list', []))}")
+        
+        # 检查是否有文章列表
+        if 'app_msg_list' not in dic:
+            logger.warning(f"未找到文章列表, 响应为: {dic}")
+            break
             
-            # 随机延时，避免被反爬
-            time.sleep(random.randint(1, 2))
-            
-            r = requests.get(url, headers=headers, params=data)
-            # 解析json
-            dic = r.json()
-            
-            # 调试日志：打印API响应
-            logger.info(f"API响应状态: {r.status_code}")
-            if 'base_resp' in dic:
-                logger.info(f"base_resp: {dic['base_resp']}")
-            logger.info(f"app_msg_cnt: {dic.get('app_msg_cnt', 'N/A')}, 本页文章数: {len(dic.get('app_msg_list', []))}")
-            
-            # 检查是否有文章列表
-            if 'app_msg_list' not in dic:
-                logger.warning(f"未找到文章列表, 响应为: {dic}")
-                break
-                
-            for item in dic['app_msg_list']:
-                title.append(item['title'])      # 获取标题
-                link.append(item['link'])        # 获取链接
-                update_time.append(item['update_time'])  # 获取更新时间戳
-                
-            pbar.update(1)
+        for item in dic['app_msg_list']:
+            title.append(item['title'])      # 获取标题
+            link.append(item['link'])        # 获取链接
+            update_time.append(item['update_time'])  # 获取更新时间戳
     
     return title, link, update_time
 
