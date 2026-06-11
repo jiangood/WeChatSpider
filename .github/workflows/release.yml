@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-2019
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -20,10 +20,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt --quiet
-          pip install pyinstaller --quiet
+      - name: Install deps
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Import test
+        run: python -c "import qfluentwidgets; import PyQt6; print('OK')"
+
+      - name: PyInstaller version
+        run: pyinstaller --version
 
       - name: Build
         run: pyinstaller --clean --noconfirm WeChatSpider.spec
@@ -34,7 +38,7 @@ jobs:
           Compress-Archive -Path "dist\WeChatSpider\*" -DestinationPath $zipName -CompressionLevel Optimal
           Add-Content -Path $env:GITHUB_ENV -Value "ZIP_NAME=$zipName"
 
-      - name: Create Release & Upload
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_NAME }}
