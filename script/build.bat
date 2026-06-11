@@ -57,7 +57,7 @@ echo.
 
 :: Copy icon file to output directory
 echo Copying icon file...
-copy "%PROJECT_DIR%\gnivu-cfd69-001.ico" "%PROJECT_DIR%\dist\WeChatSpider\" >nul
+copy "%PROJECT_DIR%\gnivu-cfd69-001.ico" "%PROJECT_DIR%\dist\WeChatSpider\_internal\" >nul
 echo Icon file copied.
 echo.
 

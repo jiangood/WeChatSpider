@@ -186,7 +186,7 @@ echo.
 :: Copy additional files to dist folder
 echo [6/8] Copying additional files...
 if exist "%PROJECT_DIR%\gnivu-cfd69-001.ico" (
-    copy /y "%PROJECT_DIR%\gnivu-cfd69-001.ico" "%PROJECT_DIR%\dist\WeChatSpider\" >nul
+    copy /y "%PROJECT_DIR%\gnivu-cfd69-001.ico" "%PROJECT_DIR%\dist\WeChatSpider\_internal\" >nul
     echo Icon file copied to dist folder.
 ) else (
     echo WARNING: Icon file not found!
