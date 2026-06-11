@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2019
 
     steps:
       - uses: actions/checkout@v4
@@ -25,23 +25,8 @@ jobs:
           pip install -r requirements.txt --quiet
           pip install pyinstaller --quiet
 
-      - name: Download UPX
-        shell: pwsh
-        run: |
-          $upxUrl = "https://github.com/upx/upx/releases/download/v5.0.2/upx-5.0.2-win64.zip"
-          $upxZip = "$env:RUNNER_TEMP\upx.zip"
-          $upxDir = "$env:RUNNER_TEMP\upx"
-          Invoke-WebRequest -Uri $upxUrl -OutFile $upxZip
-          Expand-Archive -Path $upxZip -DestinationPath $upxDir -Force
-          $upxExe = "$upxDir\upx-5.0.2-win64\upx.exe"
-          Add-Content -Path $env:GITHUB_ENV -Value "UPX_EXE=$upxExe"
-          Add-Content -Path $env:GITHUB_ENV -Value "CI_VERSION=${{ github.ref_name }}"
-
       - name: Build
-        run: |
-          pip list --format=columns | findstr pyinstaller
-          echo "=== Run PyInstaller ==="
-          pyinstaller --clean --noconfirm WeChatSpider.spec
+        run: pyinstaller --clean --noconfirm WeChatSpider.spec
 
       - name: Create ZIP
         run: |
