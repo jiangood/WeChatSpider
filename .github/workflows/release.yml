@@ -25,7 +25,7 @@ jobs:
           pip install -r requirements.txt --quiet
           pip install pyinstaller --quiet
 
-      - name: Download UPX and set env
+      - name: Download UPX
         shell: pwsh
         run: |
           $upxUrl = "https://github.com/upx/upx/releases/download/v5.0.2/upx-5.0.2-win64.zip"
@@ -38,14 +38,7 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "CI_VERSION=${{ github.ref_name }}"
 
       - name: Build
-        shell: pwsh
-        run: |
-          Write-Host "=== Build env ==="
-          Write-Host "CI_VERSION: $env:CI_VERSION"
-          Write-Host "UPX_EXE: $env:UPX_EXE"
-          Write-Host "=== Running build_ci.bat ==="
-          cmd /c "script\build_ci.bat"
-          if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE" }
+        run: python script\build_ci.py
 
       - name: Create ZIP
         run: |
